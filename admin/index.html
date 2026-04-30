@@ -161,6 +161,16 @@
     border-top: 1px solid var(--border);
   }
 
+  #btn-mapa {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    color: rgba(255,255,255,0.8);
+    text-decoration: none;
+    border: 1px solid rgba(255,255,255,0.25);
+    padding: 4px 10px; border-radius: 4px;
+    transition: all 0.2s;
+  }
+  #btn-mapa:hover { border-color: var(--accent-gold); color: var(--accent-gold); }
+
   #btn-help {
     background: none;
     border: 1px solid rgba(255,255,255,0.25);
@@ -182,6 +192,7 @@
   <h1>SECTEI <span>Registro de proyectos</span></h1>
   <div id="user-info" style="display:none">
     <span id="user-email"></span>
+    <a href="../mapa.html" id="btn-mapa">&#8592; ver mapa</a>
     <button id="btn-help">? ayuda</button>
     <button id="btn-logout">salir</button>
   </div>
@@ -459,6 +470,35 @@
   </div>
 </div>
 
+<!-- ── MODAL ÉXITO PROYECTO ── -->
+<div class="modal-overlay hidden" id="modal-exito">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-head">
+      <h2>Proyecto registrado</h2>
+      <button class="modal-close" id="exito-close-btn" title="Cerrar">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;align-items:center;gap:0.75rem;padding:0.85rem 1rem;background:#f0faf4;border:1px solid #6abf8a;border-radius:8px;">
+        <span style="font-size:22px;line-height:1">&#10003;</span>
+        <p style="font-family:var(--sans);font-size:14px;font-weight:600;color:#1a5c35;">El proyecto se guardó correctamente en la base de datos.</p>
+      </div>
+      <div class="modal-step" style="border-color:var(--accent)">
+        <div class="modal-step-body">
+          <p class="modal-item"><span class="label">Siguiente paso:</span> abre el mapa para verificar que el proyecto aparece en la ubicación correcta y con sus instituciones vinculadas.</p>
+        </div>
+      </div>
+      <div class="modal-warning">
+        <span class="icon">&#9888;</span>
+        <span><strong>¿Cometiste un error?</strong> Esta interfaz no permite editar ni eliminar registros. Si necesitas corregir algún dato, comunícalo al administrador del sistema para que realice el ajuste directamente en la base de datos.</span>
+      </div>
+    </div>
+    <div class="modal-foot" style="gap:0.75rem;justify-content:space-between">
+      <button class="btn-secondary" id="exito-close-btn2">Registrar otro</button>
+      <a href="../mapa.html" class="btn-primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;">Ver en el mapa &#8594;</a>
+    </div>
+  </div>
+</div>
+
 <script>
   const { createClient } = supabase;
   const db = createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -508,6 +548,16 @@
   document.getElementById('modal-close-btn').addEventListener('click', cerrarInstructivo);
   document.getElementById('modal-ok-btn').addEventListener('click', cerrarInstructivo);
   document.getElementById('btn-help').addEventListener('click', mostrarInstructivo);
+
+  // ── Modal éxito proyecto ──
+  function mostrarExitoProyecto() {
+    document.getElementById('modal-exito').classList.remove('hidden');
+  }
+  function cerrarExitoProyecto() {
+    document.getElementById('modal-exito').classList.add('hidden');
+  }
+  document.getElementById('exito-close-btn').addEventListener('click', cerrarExitoProyecto);
+  document.getElementById('exito-close-btn2').addEventListener('click', cerrarExitoProyecto);
 
   async function login() {
     const email = document.getElementById('login-email').value.trim();
@@ -741,10 +791,10 @@
       await db.from('proyectos_instituciones').insert(rows);
     }
 
-    toast('Proyecto guardado correctamente');
     btn.disabled = false;
     btn.textContent = 'guardar proyecto';
     document.getElementById('btn-reset-proyecto').click();
+    mostrarExitoProyecto();
   });
 
   document.getElementById('btn-reset-proyecto').addEventListener('click', () => {
