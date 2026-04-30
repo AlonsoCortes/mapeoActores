@@ -25,9 +25,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Crear config.js con credenciales
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON: ${{ secrets.SUPABASE_ANON }}
         run: |
-          echo "const SUPABASE_URL  = '${{ secrets.SUPABASE_URL }}';" > assets/js/config.js
-          echo "const SUPABASE_ANON = '${{ secrets.SUPABASE_ANON }}';" >> assets/js/config.js
+          printf "const SUPABASE_URL  = '%s';\nconst SUPABASE_ANON = '%s';\n" \
+            "$SUPABASE_URL" "$SUPABASE_ANON" > assets/js/config.js
 
       - uses: actions/configure-pages@v5
 
