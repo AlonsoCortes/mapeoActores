@@ -26,10 +26,8 @@ jobs:
 
       - name: Crear config.js con credenciales
         run: |
-          cat > assets/js/config.js <<EOF
-          const SUPABASE_URL  = '${{ secrets.SUPABASE_URL }}';
-          const SUPABASE_ANON = '${{ secrets.SUPABASE_ANON }}';
-          EOF
+          echo "const SUPABASE_URL  = '${{ secrets.SUPABASE_URL }}';" > assets/js/config.js
+          echo "const SUPABASE_ANON = '${{ secrets.SUPABASE_ANON }}';" >> assets/js/config.js
 
       - uses: actions/configure-pages@v5
 
