@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Registro de proyectos</title>
+  <link rel="stylesheet" href="../assets/css/styles.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="../assets/js/config.js"></script>
+<style>
+  .nivel-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+  .nivel-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: var(--sans);
+  }
+  .nivel-card:hover { border-color: var(--accent); }
+  .nivel-card.active {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    box-shadow: 0 0 0 2px rgba(122,21,53,0.12);
+  }
+  .nivel-num {
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--border); color: var(--muted);
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    flex-shrink: 0; transition: background 0.2s, color 0.2s;
+  }
+  .nivel-card.active .nivel-num { background: var(--accent); color: #fff; }
+  .nivel-label { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
+  .nivel-desc  { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .bloque-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.25rem;
+  }
+  .bloque-header .section-title { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+
+  .modo-toggle {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .tog {
+    background: none; border: none;
+    padding: 5px 14px;
+    font-family: var(--sans); font-size: 12px; font-weight: 500;
+    color: var(--muted); cursor: pointer; transition: all 0.15s;
+  }
+  .tog + .tog { border-left: 1px solid var(--border); }
+  .tog.active  { background: var(--accent); color: #fff; }
+  .tog:hover:not(.active) { color: var(--accent); }
+
+  /* ── Modal instructivo ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(10, 10, 10, 0.55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200;
+    padding: 1.5rem;
+  }
+  .modal-overlay.hidden { display: none; }
+
+  .modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--accent);
+    border-radius: 10px;
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.22);
+  }
+
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.25rem 1.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-head h2 {
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .modal-close {
+    background: none; border: none; font-size: 18px; color: var(--muted);
+    cursor: pointer; padding: 2px 6px; border-radius: 4px; line-height: 1;
+    transition: color 0.2s;
+  }
+  .modal-close:hover { color: var(--text); }
+
+  .modal-body { padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+
+  .modal-intro {
+    font-family: var(--sans); font-size: 13px; color: var(--muted); line-height: 1.6;
+  }
+
+  .modal-step {
+    border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden;
+  }
+  .modal-step-head {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-step-num {
+    display: flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    font-family: var(--mono); font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  .modal-step-title {
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    color: var(--text); letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .modal-step-body { padding: 0.85rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+
+  .modal-item {
+    font-family: var(--sans); font-size: 13px; color: var(--text); line-height: 1.55;
+    padding-left: 1rem; position: relative;
+  }
+  .modal-item::before {
+    content: '—'; position: absolute; left: 0;
+    color: var(--accent); font-weight: 600;
+  }
+  .modal-item .label {
+    font-weight: 600; color: var(--text);
+  }
+
+  .modal-warning {
+    display: flex; gap: 0.6rem; align-items: flex-start;
+    background: #fff8e1; border: 1px solid #f0c040;
+    border-radius: 6px; padding: 0.65rem 0.9rem;
+    font-family: var(--sans); font-size: 12px; color: #7a5c00; line-height: 1.5;
+  }
+  .modal-warning .icon { flex-shrink: 0; font-size: 14px; margin-top: 1px; }
+
+  .modal-foot {
+    padding: 1rem 1.5rem 1.25rem;
+    display: flex; justify-content: flex-end;
+    border-top: 1px solid var(--border);
+  }
+
+  #btn-help {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.25);
+    color: rgba(255,255,255,0.7);
+    font-family: var(--mono); font-size: 11px;
+    padding: 4px 10px; border-radius: 4px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  #btn-help:hover { border-color: var(--accent-gold); color: var(--accent-gold); }
+</style>
+</head>
+<body>
+
+<!-- ── TOAST ── -->
+<div id="toast"></div>
+
+<!-- ── HEADER ── -->
+<header>
+  <h1>SECTEI <span>Registro de proyectos</span></h1>
+  <div id="user-info" style="display:none">
+    <span id="user-email"></span>
+    <button id="btn-help">? ayuda</button>
+    <button id="btn-logout">salir</button>
+  </div>
+</header>
+<div class="subheader-stripe"></div>
+
+<!-- ── LOGIN ── -->
+<div id="login-screen">
+  <div class="login-box">
+    <h2>// acceso</h2>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="field">
+        <label>correo <span class="req">*</span></label>
+        <input type="email" id="login-email" placeholder="tu@correo.com"/>
+      </div>
+      <div class="field">
+        <label>contraseña <span class="req">*</span></label>
+        <input type="password" id="login-password" placeholder="••••••••"/>
+      </div>
+      <button class="btn-primary" id="btn-login" style="margin-top:0.5rem">entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── APP ── -->
+<div id="app-screen">
+
+  <div class="tabs">
+    <button class="tab active" data-tab="institucion">Institución</button>
+    <button class="tab" data-tab="proyecto">Proyecto</button>
+    <button class="tab" data-tab="actor">Actor</button>
+  </div>
+
+  <!-- TAB: PROYECTO -->
+  <div class="tab-content" id="tab-proyecto">
+    <p class="section-title">datos del proyecto</p>
+    <div class="form-grid">
+      <div class="field full">
+        <label>nombre <span class="req">*</span></label>
+        <input type="text" id="proy-nombre" placeholder="Nombre del proyecto"/>
+      </div>
+      <div class="field full">
+        <label>objetivo</label>
+        <textarea id="proy-objetivo" placeholder="Describe el objetivo principal del proyecto"></textarea>
+      </div>
+    </div>
+
+    <hr class="section-divider"/>
+    <p class="section-title">ubicación en mapa</p>
+    <div id="map-picker" class="map-container"></div>
+    <p class="map-hint">Haz clic en el mapa para marcar la ubicación del proyecto</p>
+    <div class="coords-display">
+      lat: <span id="proy-lat-display">—</span> &nbsp; lng: <span id="proy-lng-display">—</span>
+    </div>
+    <input type="hidden" id="proy-lat"/>
+    <input type="hidden" id="proy-lng"/>
+
+    <hr class="section-divider"/>
+    <p class="section-title">instituciones vinculadas</p>
+    <p class="map-hint" style="margin-bottom:0.75rem">Primero registra las instituciones en la pestaña <strong>Institución</strong>; aparecerán disponibles aquí.</p>
+    <div class="field">
+      <label>buscar institución</label>
+      <select id="inst-select">
+        <option value="">— selecciona —</option>
+      </select>
+    </div>
+    <div class="field" style="margin-top:0.5rem">
+      <label>tipo de participación</label>
+      <input type="text" id="inst-tipo" placeholder="ej. financiadora, ejecutora, aliada"/>
+    </div>
+    <button class="btn-secondary" id="btn-add-inst" style="margin-top:0.75rem;width:fit-content">+ agregar institución</button>
+    <div class="chips-area" id="inst-chips"></div>
+
+    <div class="form-actions">
+      <button class="btn-primary" id="btn-save-proyecto">guardar proyecto</button>
+      <button class="btn-secondary" id="btn-reset-proyecto">limpiar</button>
+    </div>
+  </div>
+
+  <!-- TAB: INSTITUCIÓN -->
+  <div class="tab-content active" id="tab-institucion">
+
+    <!-- Nivel -->
+    <p class="section-title">¿qué vas a registrar?</p>
+    <div class="nivel-cards">
+      <button class="nivel-card active" data-nivel="1">
+        <span class="nivel-num">1</span>
+        <div><span class="nivel-label">Organización</span><span class="nivel-desc">Ej. UNAM, CONACYT</span></div>
+      </button>
+      <button class="nivel-card" data-nivel="2">
+        <span class="nivel-num">2</span>
+        <div><span class="nivel-label">Departamento</span><span class="nivel-desc">Ej. Facultad de Arquitectura</span></div>
+      </button>
+      <button class="nivel-card" data-nivel="3">
+        <span class="nivel-num">3</span>
+        <div><span class="nivel-label">Grupo</span><span class="nivel-desc">Ej. Lab. de Planeación</span></div>
+      </button>
+    </div>
+    <input type="hidden" id="inst-nivel" value="1"/>
+
+    <!-- Bloque: Organización padre (nivel 2 y 3) -->
+    <div id="bloque-org-padre" style="display:none">
+      <hr class="section-divider"/>
+      <div class="bloque-header">
+        <p class="section-title">organización</p>
+        <div class="modo-toggle">
+          <button class="tog active" data-bloque="org" data-modo="existente">existente</button>
+          <button class="tog" data-bloque="org" data-modo="nueva">+ nueva</button>
+        </div>
+      </div>
+      <div id="org-existente">
+        <div class="field">
+          <label>selecciona la organización <span class="req">*</span></label>
+          <select id="sel-org-padre"><option value="">— selecciona —</option></select>
+        </div>
+      </div>
+      <div id="org-nueva" style="display:none">
+        <div class="form-grid">
+          <div class="field full"><label>nombre <span class="req">*</span></label><input type="text" id="org-nueva-nombre" placeholder="Nombre de la organización"/></div>
+          <div class="field"><label>tipo</label><input type="text" id="org-nueva-tipo" placeholder="ej. ONG, gobierno"/></div>
+          <div class="field"><label>alcaldía</label><input type="text" id="org-nueva-alcaldia" placeholder="ej. Cuauhtémoc"/></div>
+          <div class="field"><label>colonia</label><input type="text" id="org-nueva-colonia" placeholder="ej. Roma Norte"/></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bloque: Departamento padre (nivel 3) -->
+    <div id="bloque-dept-padre" style="display:none">
+      <hr class="section-divider"/>
+      <div class="bloque-header">
+        <p class="section-title">departamento</p>
+        <div class="modo-toggle">
+          <button class="tog active" data-bloque="dept" data-modo="existente">existente</button>
+          <button class="tog" data-bloque="dept" data-modo="nueva">+ nuevo</button>
+        </div>
+      </div>
+      <div id="dept-existente">
+        <div class="field">
+          <label>selecciona el departamento <span class="req">*</span></label>
+          <select id="sel-dept-padre"><option value="">— selecciona organización primero —</option></select>
+        </div>
+      </div>
+      <div id="dept-nueva" style="display:none">
+        <div class="form-grid">
+          <div class="field full"><label>nombre <span class="req">*</span></label><input type="text" id="dept-nueva-nombre" placeholder="Nombre del departamento"/></div>
+          <div class="field"><label>tipo</label><input type="text" id="dept-nueva-tipo" placeholder="ej. facultad, dirección"/></div>
+          <div class="field"><label>alcaldía</label><input type="text" id="dept-nueva-alcaldia" placeholder="ej. Coyoacán"/></div>
+          <div class="field"><label>colonia</label><input type="text" id="dept-nueva-colonia" placeholder="ej. Copilco"/></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Datos del nuevo registro (leaf) -->
+    <hr class="section-divider"/>
+    <p class="section-title" id="leaf-title">datos de la organización</p>
+    <div class="form-grid">
+      <div class="field full"><label>nombre <span class="req">*</span></label><input type="text" id="inst-nombre" placeholder="Nombre"/></div>
+      <div class="field"><label>tipo</label><input type="text" id="inst-tipo-cat" placeholder="ej. ONG, gobierno, academia"/></div>
+      <div class="field"><label>alcaldía</label><input type="text" id="inst-alcaldia" placeholder="ej. Cuauhtémoc"/></div>
+      <div class="field"><label>colonia</label><input type="text" id="inst-colonia" placeholder="ej. Roma Norte"/></div>
+    </div>
+
+    <hr class="section-divider"/>
+    <p class="section-title">ubicación en mapa</p>
+    <div id="map-inst" class="map-container"></div>
+    <p class="map-hint">Haz clic en el mapa para marcar la ubicación</p>
+    <div class="coords-display">lat: <span id="inst-lat-display">—</span> &nbsp; lng: <span id="inst-lng-display">—</span></div>
+    <input type="hidden" id="inst-lat"/>
+    <input type="hidden" id="inst-lng"/>
+
+    <div class="form-actions">
+      <button class="btn-primary" id="btn-save-inst">guardar</button>
+      <button class="btn-secondary" id="btn-reset-inst">limpiar</button>
+    </div>
+  </div>
+
+  <!-- TAB: ACTOR -->
+  <div class="tab-content" id="tab-actor">
+    <p class="section-title">datos del actor</p>
+    <div class="form-grid">
+      <div class="field full">
+        <label>nombres <span class="req">*</span></label>
+        <input type="text" id="actor-nombres" placeholder="Nombre(s) de pila"/>
+      </div>
+      <div class="field">
+        <label>apellido paterno <span class="req">*</span></label>
+        <input type="text" id="actor-ap" placeholder="Apellido paterno"/>
+      </div>
+      <div class="field">
+        <label>apellido materno <span class="req">*</span></label>
+        <input type="text" id="actor-am" placeholder="Apellido materno"/>
+      </div>
+      <div class="field">
+        <label>correo <span class="req">*</span></label>
+        <input type="email" id="actor-email" placeholder="correo@ejemplo.com"/>
+      </div>
+      <div class="field">
+        <label>teléfono</label>
+        <input type="text" id="actor-phone" placeholder="55 1234 5678"/>
+      </div>
+      <div class="field full">
+        <label>posición / cargo</label>
+        <input type="text" id="actor-posicion" placeholder="ej. Coordinador de proyectos"/>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn-primary" id="btn-save-actor">guardar actor</button>
+      <button class="btn-secondary" id="btn-reset-actor">limpiar</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── MODAL INSTRUCTIVO ── -->
+<div class="modal-overlay hidden" id="modal-instructivo">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>Antes de comenzar</h2>
+      <button class="modal-close" id="modal-close-btn" title="Cerrar">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-intro">
+        Este sistema registra proyectos, las instituciones que participan en ellos y los actores involucrados.
+        Sigue el orden de las pestañas para evitar errores: primero instituciones, luego proyectos, al final actores.
+      </p>
+
+      <!-- Paso 1: Institución -->
+      <div class="modal-step">
+        <div class="modal-step-head">
+          <span class="modal-step-num">1</span>
+          <span class="modal-step-title">Institución</span>
+        </div>
+        <div class="modal-step-body">
+          <p class="modal-item"><span class="label">¿Qué es?</span> Una organización, departamento o grupo que participa en proyectos. Puede tener hasta 3 niveles jerárquicos: Organización &rsaquo; Departamento &rsaquo; Grupo.</p>
+          <p class="modal-item"><span class="label">Qué preparar:</span> nombre oficial, tipo (ONG, gobierno, academia, etc.), alcaldía y colonia donde opera.</p>
+          <p class="modal-item"><span class="label">Ubicación:</span> haz clic en el mapa para capturar las coordenadas exactas; si no la conoces, puedes dejarla vacía.</p>
+          <p class="modal-item"><span class="label">Jerarquía:</span> si tu institución es un Departamento o Grupo, el formulario te pedirá los datos del nivel superior en la misma operación.</p>
+        </div>
+      </div>
+
+      <!-- Paso 2: Proyecto -->
+      <div class="modal-step">
+        <div class="modal-step-head">
+          <span class="modal-step-num">2</span>
+          <span class="modal-step-title">Proyecto</span>
+        </div>
+        <div class="modal-step-body">
+          <p class="modal-item"><span class="label">¿Qué es?</span> Una iniciativa o acción concreta. Se vincula con las instituciones que ya registraste y con los actores que participan en él.</p>
+          <p class="modal-item"><span class="label">Qué preparar:</span> nombre del proyecto, objetivo principal, ubicación geográfica e instituciones participantes con su rol (financiadora, ejecutora, aliada…).</p>
+          <p class="modal-item"><span class="label">Requisito:</span> las instituciones deben estar registradas en la pestaña anterior antes de poder vincularlas aquí.</p>
+          <div class="modal-warning">
+            <span class="icon">&#9888;</span>
+            <span><strong>Importante:</strong> al presionar <em>guardar proyecto</em>, los datos se almacenan en la base de datos. Esta interfaz no permite editar ni eliminar registros, así que revisa bien la información antes de guardar.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Paso 3: Actor -->
+      <div class="modal-step">
+        <div class="modal-step-head">
+          <span class="modal-step-num">3</span>
+          <span class="modal-step-title">Actor</span>
+        </div>
+        <div class="modal-step-body">
+          <p class="modal-item"><span class="label">¿Qué es?</span> Una persona de contacto vinculada a un proyecto (no a una institución directamente).</p>
+          <p class="modal-item"><span class="label">Qué preparar:</span> nombre completo, correo electrónico (obligatorio), teléfono o WhatsApp y cargo o posición dentro del proyecto.</p>
+          <p class="modal-item"><span class="label">Requisito:</span> el proyecto al que pertenece debe estar registrado primero.</p>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-primary" id="modal-ok-btn">Entendido, comenzar &rarr;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const { createClient } = supabase;
+  const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+  // ── Toast ──
+  function toast(msg, type = 'success', action = null) {
+    const t = document.getElementById('toast');
+    clearTimeout(t._timer);
+    if (action) {
+      t.innerHTML = `<span>${msg}</span><button class="toast-action">${action.label}</button>`;
+      t.querySelector('.toast-action').addEventListener('click', () => {
+        t.className = '';
+        action.onClick();
+      });
+      t._timer = setTimeout(() => t.className = '', 5000);
+    } else {
+      t.textContent = msg;
+      t._timer = setTimeout(() => t.className = '', 3000);
+    }
+    t.className = `show ${type}`;
+  }
+
+  // ── Tabs ──
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      setTimeout(() => { mapProy.invalidateSize(); mapInst.invalidateSize(); }, 100);
+    });
+  });
+
+  // ── Auth ──
+  async function checkSession() {
+    const { data: { session } } = await db.auth.getSession();
+    if (session) showApp(session.user.email);
+  }
+
+  // ── Modal instructivo ──
+  function mostrarInstructivo() {
+    document.getElementById('modal-instructivo').classList.remove('hidden');
+  }
+  function cerrarInstructivo() {
+    document.getElementById('modal-instructivo').classList.add('hidden');
+  }
+  document.getElementById('modal-close-btn').addEventListener('click', cerrarInstructivo);
+  document.getElementById('modal-ok-btn').addEventListener('click', cerrarInstructivo);
+  document.getElementById('btn-help').addEventListener('click', mostrarInstructivo);
+
+  async function login() {
+    const email = document.getElementById('login-email').value.trim();
+    const pass  = document.getElementById('login-password').value;
+    const btn   = document.getElementById('btn-login');
+    btn.disabled = true;
+    btn.textContent = 'entrando...';
+    const { data, error } = await db.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+      toast('Credenciales incorrectas', 'error');
+      btn.disabled = false;
+      btn.textContent = 'entrar';
+    } else {
+      showApp(data.user.email, true);
+    }
+  }
+
+  function showApp(email, mostrarModal = false) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = 'flex';
+    document.getElementById('user-info').style.display = 'flex';
+    document.getElementById('user-email').textContent = email;
+    setTimeout(() => { mapInst.invalidateSize(); mapProy.invalidateSize(); }, 200);
+    loadInstituciones();
+    if (mostrarModal) mostrarInstructivo();
+  }
+
+  document.getElementById('btn-login').addEventListener('click', login);
+  document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+  document.getElementById('btn-logout').addEventListener('click', async () => {
+    await db.auth.signOut();
+    location.reload();
+  });
+
+  // ── Mapa proyecto ──
+  const mapProy = L.map('map-picker').setView([19.432608, -99.133209], 11);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
+  }).addTo(mapProy);
+
+  let markerProy = null;
+  mapProy.on('click', e => {
+    const { lat, lng } = e.latlng;
+    if (markerProy) markerProy.setLatLng(e.latlng);
+    else markerProy = L.marker(e.latlng).addTo(mapProy);
+    document.getElementById('proy-lat').value = lat.toFixed(6);
+    document.getElementById('proy-lng').value = lng.toFixed(6);
+    document.getElementById('proy-lat-display').textContent = lat.toFixed(6);
+    document.getElementById('proy-lng-display').textContent = lng.toFixed(6);
+  });
+
+  // ── Mapa institución ── 
+  const mapInst = L.map('map-inst').setView([19.432608, -99.133209], 11);
+  
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
+  }).addTo(mapInst);
+
+  let markerInst = null;
+  mapInst.on('click', e => {
+    const { lat, lng } = e.latlng;
+    if (markerInst) markerInst.setLatLng(e.latlng);
+    else markerInst = L.marker(e.latlng).addTo(mapInst);
+    document.getElementById('inst-lat').value = lat.toFixed(6);
+    document.getElementById('inst-lng').value = lng.toFixed(6);
+    document.getElementById('inst-lat-display').textContent = lat.toFixed(6);
+    document.getElementById('inst-lng-display').textContent = lng.toFixed(6);
+  });
+
+  // ── Cargar instituciones para el selector (con jerarquía) ──
+  async function loadInstituciones() {
+    const { data } = await db.from('instituciones').select('id, nombre, nivel, parent_id').order('nombre');
+    const todas = data || [];
+    const n1 = todas.filter(i => i.nivel === 1);
+    const n2 = todas.filter(i => i.nivel === 2);
+    const n3 = todas.filter(i => i.nivel === 3);
+
+    const sel = document.getElementById('inst-select');
+    sel.innerHTML = '<option value="">— selecciona —</option>';
+
+    const agregarOpt = (sel, id, texto) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = texto;
+      sel.appendChild(opt);
+    };
+
+    n1.forEach(org => {
+      agregarOpt(sel, org.id, org.nombre);
+      n2.filter(d => d.parent_id === org.id).forEach(dep => {
+        agregarOpt(sel, dep.id, '  ↳ ' + dep.nombre);
+        n3.filter(g => g.parent_id === dep.id).forEach(grp => {
+          agregarOpt(sel, grp.id, '      ↳ ' + grp.nombre);
+        });
+      });
+    });
+    // Huérfanos sin padre registrado
+    n2.filter(d => !n1.find(o => o.id === d.parent_id)).forEach(d => agregarOpt(sel, d.id, '↳ ' + d.nombre));
+    n3.filter(g => !n2.find(d => d.id === g.parent_id)).forEach(g => agregarOpt(sel, g.id, '↳ ' + g.nombre));
+  }
+
+  // ── Institución: estado ──
+  let nivelActivo = 1;
+  let modoOrg  = 'existente';
+  let modoDept = 'existente';
+
+  const leafTitles = { 1: 'datos de la organización', 2: 'datos del departamento', 3: 'datos del grupo' };
+
+  document.querySelectorAll('.nivel-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.nivel-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      nivelActivo = parseInt(card.dataset.nivel);
+      document.getElementById('inst-nivel').value = nivelActivo;
+      document.getElementById('leaf-title').textContent = leafTitles[nivelActivo];
+      document.getElementById('bloque-org-padre').style.display  = nivelActivo >= 2 ? 'block' : 'none';
+      document.getElementById('bloque-dept-padre').style.display = nivelActivo === 3 ? 'block' : 'none';
+      if (nivelActivo >= 2) cargarOrgsParaPadre();
+    });
+  });
+
+  document.querySelectorAll('.modo-toggle .tog').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const bloque = btn.dataset.bloque;
+      const modo   = btn.dataset.modo;
+      btn.closest('.modo-toggle').querySelectorAll('.tog').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (bloque === 'org') {
+        modoOrg = modo;
+        document.getElementById('org-existente').style.display = modo === 'existente' ? 'block' : 'none';
+        document.getElementById('org-nueva').style.display     = modo === 'nueva'     ? 'block' : 'none';
+        if (modo === 'nueva') {
+          document.getElementById('sel-dept-padre').innerHTML = '<option value="">— selecciona organización primero —</option>';
+        }
+      } else {
+        modoDept = modo;
+        document.getElementById('dept-existente').style.display = modo === 'existente' ? 'block' : 'none';
+        document.getElementById('dept-nueva').style.display     = modo === 'nueva'     ? 'block' : 'none';
+      }
+    });
+  });
+
+  async function cargarOrgsParaPadre() {
+    const { data } = await db.from('instituciones').select('id, nombre').eq('nivel', 1).order('nombre');
+    const sel = document.getElementById('sel-org-padre');
+    sel.innerHTML = '<option value="">— selecciona —</option>';
+    (data || []).forEach(i => {
+      const opt = document.createElement('option');
+      opt.value = i.id; opt.textContent = i.nombre;
+      sel.appendChild(opt);
+    });
+    document.getElementById('sel-dept-padre').innerHTML = '<option value="">— selecciona organización primero —</option>';
+  }
+
+  document.getElementById('sel-org-padre').addEventListener('change', async function () {
+    if (nivelActivo !== 3 || !this.value) return;
+    const { data } = await db.from('instituciones').select('id, nombre').eq('nivel', 2).eq('parent_id', parseInt(this.value)).order('nombre');
+    const sel = document.getElementById('sel-dept-padre');
+    sel.innerHTML = '<option value="">— selecciona —</option>';
+    (data || []).forEach(i => {
+      const opt = document.createElement('option');
+      opt.value = i.id; opt.textContent = i.nombre;
+      sel.appendChild(opt);
+    });
+  });
+
+  // ── Chips de instituciones vinculadas ──
+  let instVinculadas = [];
+
+  document.getElementById('btn-add-inst').addEventListener('click', () => {
+    const sel  = document.getElementById('inst-select');
+    const tipo = document.getElementById('inst-tipo').value.trim();
+    const id   = sel.value;
+    const name = sel.options[sel.selectedIndex].text;
+    if (!id) return toast('Selecciona una institución', 'error');
+    if (instVinculadas.find(i => i.id === id)) return toast('Ya fue agregada', 'error');
+    instVinculadas.push({ id, name, tipo });
+    renderChips();
+    document.getElementById('inst-tipo').value = '';
+    sel.value = '';
+  });
+
+  function renderChips() {
+    const area = document.getElementById('inst-chips');
+    area.innerHTML = '';
+    instVinculadas.forEach((inst, idx) => {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.innerHTML = `${inst.name}${inst.tipo ? ' · ' + inst.tipo : ''} <button onclick="removeChip(${idx})">×</button>`;
+      area.appendChild(chip);
+    });
+  }
+
+  window.removeChip = (idx) => {
+    instVinculadas.splice(idx, 1);
+    renderChips();
+  };
+
+  // ── Guardar proyecto ──
+  document.getElementById('btn-save-proyecto').addEventListener('click', async () => {
+    const nombre   = document.getElementById('proy-nombre').value.trim();
+    const objetivo = document.getElementById('proy-objetivo').value.trim();
+    const latitud  = document.getElementById('proy-lat').value;
+    const longitud = document.getElementById('proy-lng').value;
+
+    if (!nombre) return toast('El nombre es obligatorio', 'error');
+
+    const btn = document.getElementById('btn-save-proyecto');
+    btn.disabled = true;
+    btn.textContent = 'guardando...';
+
+    const { data: proy, error } = await db.from('proyectos').insert({
+      nombre, objetivo,
+      latitud:  latitud  ? parseFloat(latitud)  : null,
+      longitud: longitud ? parseFloat(longitud) : null,
+    }).select().single();
+
+    if (error) {
+      toast('Error al guardar: ' + error.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'guardar proyecto';
+      return;
+    }
+
+    if (instVinculadas.length > 0) {
+      const rows = instVinculadas.map(i => ({
+        proyecto_id: proy.id,
+        institucion_id: i.id,
+        tipo_participacion: i.tipo || null,
+      }));
+      await db.from('proyectos_instituciones').insert(rows);
+    }
+
+    toast('Proyecto guardado correctamente');
+    btn.disabled = false;
+    btn.textContent = 'guardar proyecto';
+    document.getElementById('btn-reset-proyecto').click();
+  });
+
+  document.getElementById('btn-reset-proyecto').addEventListener('click', () => {
+    document.getElementById('proy-nombre').value = '';
+    document.getElementById('proy-objetivo').value = '';
+    document.getElementById('proy-lat').value = '';
+    document.getElementById('proy-lng').value = '';
+    document.getElementById('proy-lat-display').textContent = '—';
+    document.getElementById('proy-lng-display').textContent = '—';
+    if (markerProy) { mapProy.removeLayer(markerProy); markerProy = null; }
+    instVinculadas = [];
+    renderChips();
+  });
+
+  // ── Guardar institución ──
+  document.getElementById('btn-save-inst').addEventListener('click', async () => {
+    const nombre = document.getElementById('inst-nombre').value.trim();
+    if (!nombre) return toast('El nombre es obligatorio', 'error');
+
+    const btn = document.getElementById('btn-save-inst');
+    btn.disabled = true; btn.textContent = 'guardando...';
+    const restore = () => { btn.disabled = false; btn.textContent = 'guardar'; };
+
+    const tipo     = document.getElementById('inst-tipo-cat').value.trim() || null;
+    const alcaldia = document.getElementById('inst-alcaldia').value.trim() || null;
+    const colonia  = document.getElementById('inst-colonia').value.trim()  || null;
+    const latitud  = document.getElementById('inst-lat').value;
+    const longitud = document.getElementById('inst-lng').value;
+
+    let parentId = null;
+
+    if (nivelActivo >= 2) {
+      let orgId;
+      if (modoOrg === 'existente') {
+        orgId = document.getElementById('sel-org-padre').value;
+        if (!orgId) { toast('Selecciona la organización', 'error'); return restore(); }
+        orgId = parseInt(orgId);
+      } else {
+        const orgNombre = document.getElementById('org-nueva-nombre').value.trim();
+        if (!orgNombre) { toast('Ingresa el nombre de la organización', 'error'); return restore(); }
+        const { data: newOrg, error: e } = await db.from('instituciones').insert({
+          nombre: orgNombre,
+          tipo:     document.getElementById('org-nueva-tipo').value.trim()     || null,
+          alcaldia: document.getElementById('org-nueva-alcaldia').value.trim() || null,
+          colonia:  document.getElementById('org-nueva-colonia').value.trim()  || null,
+          nivel: 1, parent_id: null,
+        }).select().single();
+        if (e) { toast('Error al guardar organización: ' + e.message, 'error'); return restore(); }
+        orgId = newOrg.id;
+      }
+      parentId = orgId;
+
+      if (nivelActivo === 3) {
+        let deptId;
+        if (modoDept === 'existente') {
+          deptId = document.getElementById('sel-dept-padre').value;
+          if (!deptId) { toast('Selecciona el departamento', 'error'); return restore(); }
+          deptId = parseInt(deptId);
+        } else {
+          const deptNombre = document.getElementById('dept-nueva-nombre').value.trim();
+          if (!deptNombre) { toast('Ingresa el nombre del departamento', 'error'); return restore(); }
+          const { data: newDept, error: e } = await db.from('instituciones').insert({
+            nombre: deptNombre,
+            tipo:     document.getElementById('dept-nueva-tipo').value.trim()     || null,
+            alcaldia: document.getElementById('dept-nueva-alcaldia').value.trim() || null,
+            colonia:  document.getElementById('dept-nueva-colonia').value.trim()  || null,
+            nivel: 2, parent_id: orgId,
+          }).select().single();
+          if (e) { toast('Error al guardar departamento: ' + e.message, 'error'); return restore(); }
+          deptId = newDept.id;
+        }
+        parentId = deptId;
+      }
+    }
+
+    const { error } = await db.from('instituciones').insert({
+      nombre, tipo, alcaldia, colonia,
+      nivel: nivelActivo,
+      parent_id: parentId,
+      latitud:  latitud  ? parseFloat(latitud)  : null,
+      longitud: longitud ? parseFloat(longitud) : null,
+    });
+
+    if (error) {
+      toast('Error al guardar: ' + error.message, 'error');
+    } else {
+      toast('Institución guardada', 'success', {
+        label: '→ ir a Proyectos',
+        onClick: () => document.querySelector('.tab[data-tab="proyecto"]').click(),
+      });
+      document.getElementById('btn-reset-inst').click();
+      loadInstituciones();
+    }
+    restore();
+  });
+
+  document.getElementById('btn-reset-inst').addEventListener('click', () => {
+    nivelActivo = 1; modoOrg = 'existente'; modoDept = 'existente';
+    document.getElementById('inst-nivel').value = '1';
+    document.getElementById('leaf-title').textContent = leafTitles[1];
+    document.querySelectorAll('.nivel-card').forEach(c => c.classList.remove('active'));
+    document.querySelector('.nivel-card[data-nivel="1"]').classList.add('active');
+    document.getElementById('bloque-org-padre').style.display  = 'none';
+    document.getElementById('bloque-dept-padre').style.display = 'none';
+    // Reset toggles a "existente"
+    ['org','dept'].forEach(b => {
+      document.querySelectorAll(`#bloque-${b}-padre .tog`).forEach(t => t.classList.remove('active'));
+      document.querySelector(`#bloque-${b}-padre .tog[data-modo="existente"]`).classList.add('active');
+    });
+    document.getElementById('org-existente').style.display  = 'block';
+    document.getElementById('org-nueva').style.display      = 'none';
+    document.getElementById('dept-existente').style.display = 'block';
+    document.getElementById('dept-nueva').style.display     = 'none';
+    document.getElementById('sel-org-padre').innerHTML  = '<option value="">— selecciona —</option>';
+    document.getElementById('sel-dept-padre').innerHTML = '<option value="">— selecciona organización primero —</option>';
+    ['org-nueva-nombre','org-nueva-tipo','org-nueva-alcaldia','org-nueva-colonia',
+     'dept-nueva-nombre','dept-nueva-tipo','dept-nueva-alcaldia','dept-nueva-colonia',
+     'inst-nombre','inst-tipo-cat','inst-alcaldia','inst-colonia',
+     'inst-lat','inst-lng'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('inst-lat-display').textContent = '—';
+    document.getElementById('inst-lng-display').textContent = '—';
+    if (markerInst) { mapInst.removeLayer(markerInst); markerInst = null; }
+  });
+
+  // ── Guardar actor ──
+  document.getElementById('btn-save-actor').addEventListener('click', async () => {
+    const nombres    = document.getElementById('actor-nombres').value.trim();
+    const apellido_p = document.getElementById('actor-ap').value.trim();
+    const apellido_m = document.getElementById('actor-am').value.trim();
+    const email      = document.getElementById('actor-email').value.trim();
+    const phone      = document.getElementById('actor-phone').value.trim();
+    const posicion   = document.getElementById('actor-posicion').value.trim();
+
+    if (!nombres || !apellido_p || !apellido_m || !email)
+      return toast('Nombres, apellidos y correo son obligatorios', 'error');
+
+    const btn = document.getElementById('btn-save-actor');
+    btn.disabled = true;
+    btn.textContent = 'guardando...';
+
+    const { error } = await db.from('actores').insert({ nombres, apellido_p, apellido_m, email, phone, posicion });
+
+    if (error) {
+      toast('Error al guardar: ' + error.message, 'error');
+    } else {
+      toast('Actor guardado correctamente');
+      document.getElementById('btn-reset-actor').click();
+    }
+    btn.disabled = false;
+    btn.textContent = 'guardar actor';
+  });
+
+  document.getElementById('btn-reset-actor').addEventListener('click', () => {
+    ['actor-nombres','actor-ap','actor-am','actor-email','actor-phone','actor-posicion']
+      .forEach(id => document.getElementById(id).value = '');
+  });
+
+  // ── Init ──
+  checkSession();
+</script>
+</body>
+</html>
