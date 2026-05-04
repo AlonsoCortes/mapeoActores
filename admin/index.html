@@ -9,6 +9,7 @@
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="../assets/js/config.js"></script>
+  <script src="../assets/js/catalogos.js"></script>
 <style>
   .nivel-cards {
     display: grid;
@@ -236,7 +237,7 @@
       </div>
       <div class="field full">
         <label>objetivo</label>
-        <textarea id="proy-objetivo" placeholder="Describe el objetivo principal del proyecto"></textarea>
+        <textarea id="proy-objetivo" placeholder="Describe el objetivo principal del proyecto" spellcheck="true"></textarea>
       </div>
     </div>
 
@@ -261,7 +262,7 @@
     </div>
     <div class="field" style="margin-top:0.5rem">
       <label>tipo de participación</label>
-      <input type="text" id="inst-tipo" placeholder="ej. financiadora, ejecutora, aliada"/>
+      <input type="text" id="inst-tipo" placeholder="ej. financiadora, ejecutora, aliada" spellcheck="true"/>
     </div>
     <button class="btn-secondary" id="btn-add-inst" style="margin-top:0.75rem;width:fit-content">+ agregar institución</button>
     <div class="chips-area" id="inst-chips"></div>
@@ -312,8 +313,8 @@
       <div id="org-nueva" style="display:none">
         <div class="form-grid">
           <div class="field full"><label>nombre <span class="req">*</span></label><input type="text" id="org-nueva-nombre" placeholder="Nombre de la organización"/></div>
-          <div class="field"><label>tipo</label><input type="text" id="org-nueva-tipo" placeholder="ej. ONG, gobierno"/></div>
-          <div class="field"><label>alcaldía</label><input type="text" id="org-nueva-alcaldia" placeholder="ej. Cuauhtémoc"/></div>
+          <div class="field"><label>tipo</label><select id="org-nueva-tipo"><option value="">— selecciona —</option></select></div>
+          <div class="field"><label>alcaldía</label><select id="org-nueva-alcaldia"><option value="">— selecciona —</option></select></div>
           <div class="field"><label>colonia</label><input type="text" id="org-nueva-colonia" placeholder="ej. Roma Norte"/></div>
         </div>
       </div>
@@ -338,8 +339,8 @@
       <div id="dept-nueva" style="display:none">
         <div class="form-grid">
           <div class="field full"><label>nombre <span class="req">*</span></label><input type="text" id="dept-nueva-nombre" placeholder="Nombre del departamento"/></div>
-          <div class="field"><label>tipo</label><input type="text" id="dept-nueva-tipo" placeholder="ej. facultad, dirección"/></div>
-          <div class="field"><label>alcaldía</label><input type="text" id="dept-nueva-alcaldia" placeholder="ej. Coyoacán"/></div>
+          <div class="field"><label>tipo</label><select id="dept-nueva-tipo"><option value="">— selecciona —</option></select></div>
+          <div class="field"><label>alcaldía</label><select id="dept-nueva-alcaldia"><option value="">— selecciona —</option></select></div>
           <div class="field"><label>colonia</label><input type="text" id="dept-nueva-colonia" placeholder="ej. Copilco"/></div>
         </div>
       </div>
@@ -350,8 +351,8 @@
     <p class="section-title" id="leaf-title">datos de la organización</p>
     <div class="form-grid">
       <div class="field full"><label>nombre <span class="req">*</span></label><input type="text" id="inst-nombre" placeholder="Nombre"/></div>
-      <div class="field"><label>tipo</label><input type="text" id="inst-tipo-cat" placeholder="ej. ONG, gobierno, academia"/></div>
-      <div class="field"><label>alcaldía</label><input type="text" id="inst-alcaldia" placeholder="ej. Cuauhtémoc"/></div>
+      <div class="field"><label>tipo</label><select id="inst-tipo-cat"><option value="">— selecciona —</option></select></div>
+      <div class="field"><label>alcaldía</label><select id="inst-alcaldia"><option value="">— selecciona —</option></select></div>
       <div class="field"><label>colonia</label><input type="text" id="inst-colonia" placeholder="ej. Roma Norte"/></div>
     </div>
 
@@ -395,7 +396,7 @@
       </div>
       <div class="field full">
         <label>posición / cargo</label>
-        <input type="text" id="actor-posicion" placeholder="ej. Coordinador de proyectos"/>
+        <input type="text" id="actor-posicion" placeholder="ej. Coordinador de proyectos" spellcheck="true"/>
       </div>
     </div>
 
@@ -581,6 +582,7 @@
     document.getElementById('user-info').style.display = 'flex';
     document.getElementById('user-email').textContent = email;
     setTimeout(() => { mapInst.invalidateSize(); mapProy.invalidateSize(); }, 200);
+    loadTipos();
     loadInstituciones();
     if (mostrarModal) mostrarInstructivo();
   }
@@ -626,6 +628,23 @@
     document.getElementById('inst-lat-display').textContent = lat.toFixed(6);
     document.getElementById('inst-lng-display').textContent = lng.toFixed(6);
   });
+
+  // ── Cargar catálogo de alcaldías (datos locales) ──
+  function loadAlcaldias() {
+    const opciones = ALCALDIAS_CDMX.map(a => `<option value="${a}">${a}</option>`).join('');
+    ['inst-alcaldia', 'org-nueva-alcaldia', 'dept-nueva-alcaldia'].forEach(id => {
+      document.getElementById(id).innerHTML = '<option value="">— selecciona —</option>' + opciones;
+    });
+  }
+
+  // ── Cargar catálogo de tipos ──
+  async function loadTipos() {
+    const { data } = await db.from('cat_tipos_institucion').select('nombre').order('nombre');
+    const opciones = (data || []).map(t => `<option value="${t.nombre}">${t.nombre}</option>`).join('');
+    ['inst-tipo-cat', 'org-nueva-tipo', 'dept-nueva-tipo'].forEach(id => {
+      document.getElementById(id).innerHTML = '<option value="">— selecciona —</option>' + opciones;
+    });
+  }
 
   // ── Cargar instituciones para el selector (con jerarquía) ──
   async function loadInstituciones() {
@@ -953,6 +972,7 @@
   });
 
   // ── Init ──
+  loadAlcaldias();
   checkSession();
 </script>
 </body>

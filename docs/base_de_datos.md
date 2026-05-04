@@ -2,7 +2,7 @@
 
 ## Contexto
 
-Esta base de datos está diseñada para capturar y visualizar información sobre proyectos, las instituciones que participan en ellos y los actores (personas) involucrados. La información se almacena en **Supabase** (PostgreSQL) y se consume desde una aplicación web en GitHub Pages que incluye un mapa interactivo.
+Esta base de datos está diseñada para capturar y visualizar información sobre proyectos, las instituciones que participan en ellos y los actores (personas) involucrados. La información se almacena en **Supabase** (PostgreSQL) y se consume desde una aplicación web publicada en **GitHub Pages** que incluye un mapa interactivo.
 
 ---
 
@@ -36,7 +36,7 @@ Ejemplo: UNAM (1) › Facultad de Arquitectura (2) › Laboratorio de Planeació
 | `nombre` | text | sí | Nombre de la organización, departamento o grupo |
 | `nivel` | smallint | sí | Nivel jerárquico: 1 (Organización), 2 (Departamento), 3 (Grupo). Default: 1 |
 | `parent_id` | bigint FK | no | Referencia al registro padre en esta misma tabla. Null para nivel 1 |
-| `tipo` | text | no | Tipo de organización (ej. ONG, gobierno, academia) |
+| `tipo` | text | no | Tipo de organización — valor controlado por catálogo `cat_tipos_institucion` |
 | `alcaldia` | text | no | Alcaldía donde se ubica (contexto CDMX) |
 | `colonia` | text | no | Colonia donde se ubica |
 | `latitud` | float8 | no | Coordenada geográfica — latitud |
@@ -113,6 +113,92 @@ Vincula proyectos con actores. La combinación `(proyecto_id, actor_id)` es úni
 
 ---
 
+## Catálogos en JavaScript
+
+Algunos campos tienen valores controlados que se manejan directamente en el frontend, sin tabla en Supabase, porque son datos fijos que no cambian.
+
+### Alcaldías de la CDMX (`assets/js/catalogos.js`)
+
+Las 16 alcaldías de la Ciudad de México se almacenan en el arreglo `ALCALDIAS_CDMX`. El formulario de captura carga estas opciones en los selects de alcaldía al iniciar la página (sin requerir sesión).
+
+```js
+const ALCALDIAS_CDMX = [
+  'Álvaro Obregón', 'Azcapotzalco', 'Benito Juárez', 'Coyoacán',
+  'Cuajimalpa de Morelos', 'Cuauhtémoc', 'Gustavo A. Madero', 'Iztacalco',
+  'Iztapalapa', 'La Magdalena Contreras', 'Miguel Hidalgo', 'Milpa Alta',
+  'Tláhuac', 'Tlalpan', 'Venustiano Carranza', 'Xochimilco',
+];
+```
+
+### Colonias (no implementado — posibilidad futura)
+
+El campo `colonia` en `instituciones` actualmente acepta texto libre. Si en el futuro se necesita controlar este campo, la opción recomendada es:
+
+- Agregar un arreglo `COLONIAS_CDMX` en `catalogos.js`, estructurado como objeto `{ alcaldia: [colonia1, colonia2, ...] }` para permitir filtrado en cascada.
+- El formulario actualizaría el select de colonias al cambiar la alcaldía seleccionada.
+- La fuente oficial es el catálogo SEPOMEX (~1,800 colonias) o el INEGI.
+
+No se implementó porque la variación en nombres de colonia (abreviaturas, acentos, barrios vs. colonias) hace difícil garantizar consistencia sin un proceso de normalización previo.
+
+---
+
+## Tablas de catálogo
+
+### `cat_tipos_institucion`
+
+Catálogo controlado de tipos de institución. El formulario carga estas opciones dinámicamente; para agregar o quitar un tipo basta modificar esta tabla en Supabase sin tocar el código.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `id` | smallint | Identificador autoincremental |
+| `nombre` | text | Nombre del tipo (único) |
+
+**Valores actuales:**
+
+| Sector | Tipos |
+|---|---|
+| Sector público / Gobierno | Gobierno federal · Gobierno de la Ciudad de México · Alcaldía · Organismo descentralizado · Organismo autónomo |
+| Educación | Institución educativa pública · Institución educativa privada · Centro público de investigación · Instituto tecnológico |
+| Salud | Hospital / Instituto de salud público · Hospital / Clínica privada |
+| Empresa | Empresa privada · Startup / Empresa de base tecnológica |
+| Ecosistema de innovación | Incubadora / Aceleradora · Clúster / Parque tecnológico |
+| Sociedad civil | Asociación civil / OSC · Fundación |
+| Internacional | Organismo internacional · Embajada / Consulado |
+| Otro | Otro |
+
+**SQL de creación:**
+
+```sql
+create table cat_tipos_institucion (
+  id     smallint primary key generated always as identity,
+  nombre text not null unique
+);
+
+insert into cat_tipos_institucion (nombre) values
+  ('Gobierno federal'),
+  ('Gobierno de la Ciudad de México'),
+  ('Alcaldía'),
+  ('Organismo descentralizado'),
+  ('Organismo autónomo'),
+  ('Institución educativa pública'),
+  ('Institución educativa privada'),
+  ('Centro público de investigación'),
+  ('Instituto tecnológico'),
+  ('Hospital / Instituto de salud público'),
+  ('Hospital / Clínica privada'),
+  ('Empresa privada'),
+  ('Startup / Empresa de base tecnológica'),
+  ('Incubadora / Aceleradora'),
+  ('Clúster / Parque tecnológico'),
+  ('Asociación civil / OSC'),
+  ('Fundación'),
+  ('Organismo internacional'),
+  ('Embajada / Consulado'),
+  ('Otro');
+```
+
+---
+
 ## Reglas de integridad
 
 - **`references ... on delete cascade`** — si se elimina un proyecto, sus registros en `proyectos_instituciones` y `proyecto_actores` se borran automáticamente. Evita registros huérfanos.
@@ -125,5 +211,41 @@ Vincula proyectos con actores. La combinación `(proyecto_id, actor_id)` es úni
 
 - La base de datos corre en **Supabase** (PostgreSQL con PostGIS disponible).
 - Se accede vía la **API REST automática** que genera Supabase, usando `Project URL` y `anon key`.
-- El mapa público consume los datos de `proyectos` e `instituciones` mediante peticiones GET sin autenticación (requiere configurar RLS en Supabase).
+- El mapa público consume los datos de `proyectos` e `instituciones` mediante peticiones GET sin autenticación (requiere configurar RLS en Supabase para lectura pública).
 - El formulario de captura requiere autenticación para operaciones de escritura (INSERT).
+- Los datos guardados **no pueden editarse** desde la interfaz — los errores deben reportarse al administrador.
+
+---
+
+## Arquitectura de deploy
+
+El sitio es completamente estático y se publica en **GitHub Pages** via **GitHub Actions**.
+
+```
+Repositorio GitHub (público)
+    │
+    ├── assets/js/config.js   ← en .gitignore, NO existe en el repo
+    └── .github/workflows/
+            └── deploy.yml    ← genera config.js e inyecta credenciales
+```
+
+### Flujo de deploy
+
+```
+git push → GitHub Actions se activa
+              │
+              ├── checkout del código
+              ├── genera assets/js/config.js con los secretos del repo
+              └── publica en GitHub Pages
+```
+
+### Credenciales (GitHub Secrets)
+
+Las credenciales de Supabase se almacenan como **secretos del repositorio** en GitHub (Settings → Secrets and variables → Actions) y nunca aparecen en el código fuente:
+
+| Secreto | Descripción |
+|---|---|
+| `SUPABASE_URL` | URL del proyecto Supabase (`https://....supabase.co`) |
+| `SUPABASE_ANON` | Llave pública anon (`sb_publishable_...`) |
+
+La llave `anon` es de tipo **publishable** — está diseñada para ser usada en código cliente. La seguridad de escritura la controlan las políticas **RLS** de Supabase, no el secreto de esta llave.
