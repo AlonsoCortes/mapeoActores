@@ -400,6 +400,18 @@
       </div>
     </div>
 
+    <hr class="section-divider"/>
+    <p class="section-title">proyectos vinculados</p>
+    <p class="map-hint" style="margin-bottom:0.75rem">El actor se registrará como <strong>responsable técnico</strong> en cada proyecto que agregues. Es opcional.</p>
+    <div class="field">
+      <label>selecciona un proyecto</label>
+      <select id="proy-select-actor">
+        <option value="">— selecciona —</option>
+      </select>
+    </div>
+    <button class="btn-secondary" id="btn-add-proy-actor" style="margin-top:0.75rem;width:fit-content">+ agregar proyecto</button>
+    <div class="chips-area" id="proy-actor-chips"></div>
+
     <div class="form-actions">
       <button class="btn-primary" id="btn-save-actor">guardar actor</button>
       <button class="btn-secondary" id="btn-reset-actor">limpiar</button>
@@ -584,6 +596,7 @@
     setTimeout(() => { mapInst.invalidateSize(); mapProy.invalidateSize(); }, 200);
     loadTipos();
     loadInstituciones();
+    loadProyectos();
     if (mostrarModal) mostrarInstructivo();
   }
 
@@ -628,6 +641,18 @@
     document.getElementById('inst-lat-display').textContent = lat.toFixed(6);
     document.getElementById('inst-lng-display').textContent = lng.toFixed(6);
   });
+
+  // ── Cargar proyectos para selector de actor ──
+  async function loadProyectos() {
+    const { data } = await db.from('proyectos').select('id, nombre').order('nombre');
+    const sel = document.getElementById('proy-select-actor');
+    sel.innerHTML = '<option value="">— selecciona —</option>';
+    (data || []).forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id; opt.textContent = p.nombre;
+      sel.appendChild(opt);
+    });
+  }
 
   // ── Cargar catálogo de alcaldías (datos locales) ──
   function loadAlcaldias() {
@@ -938,6 +963,36 @@
     if (markerInst) { mapInst.removeLayer(markerInst); markerInst = null; }
   });
 
+  // ── Chips de proyectos vinculados al actor ──
+  let proyVinculados = [];
+
+  document.getElementById('btn-add-proy-actor').addEventListener('click', () => {
+    const sel  = document.getElementById('proy-select-actor');
+    const id   = sel.value;
+    const name = sel.options[sel.selectedIndex].text;
+    if (!id) return toast('Selecciona un proyecto', 'error');
+    if (proyVinculados.find(p => p.id === id)) return toast('Ya fue agregado', 'error');
+    proyVinculados.push({ id, name });
+    renderProyChips();
+    sel.value = '';
+  });
+
+  function renderProyChips() {
+    const area = document.getElementById('proy-actor-chips');
+    area.innerHTML = '';
+    proyVinculados.forEach((proy, idx) => {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.innerHTML = `${proy.name} <button onclick="removeProyChip(${idx})">×</button>`;
+      area.appendChild(chip);
+    });
+  }
+
+  window.removeProyChip = (idx) => {
+    proyVinculados.splice(idx, 1);
+    renderProyChips();
+  };
+
   // ── Guardar actor ──
   document.getElementById('btn-save-actor').addEventListener('click', async () => {
     const nombres    = document.getElementById('actor-nombres').value.trim();
@@ -954,14 +1009,41 @@
     btn.disabled = true;
     btn.textContent = 'guardando...';
 
-    const { error } = await db.from('actores').insert({ nombres, apellido_p, apellido_m, email, phone, posicion });
+    const { data: actor, error } = await db.from('actores')
+      .insert({ nombres, apellido_p, apellido_m, email, phone, posicion })
+      .select().single();
 
     if (error) {
       toast('Error al guardar: ' + error.message, 'error');
-    } else {
-      toast('Actor guardado correctamente');
-      document.getElementById('btn-reset-actor').click();
+      btn.disabled = false;
+      btn.textContent = 'guardar actor';
+      return;
     }
+
+    if (!actor) {
+      toast('Error: no se pudo obtener el actor guardado. Verifica las políticas RLS de la tabla actores.', 'error');
+      btn.disabled = false;
+      btn.textContent = 'guardar actor';
+      return;
+    }
+
+    if (proyVinculados.length > 0) {
+      const rows = proyVinculados.map(p => ({
+        proyecto_id: parseInt(p.id),
+        actor_id: actor.id,
+        posicion_proyecto: 'responsable_tecnico',
+      }));
+      const { error: eRel } = await db.from('proyecto_actores').insert(rows);
+      if (eRel) {
+        toast('Actor guardado, pero error al vincular proyectos: ' + eRel.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'guardar actor';
+        return;
+      }
+    }
+
+    toast('Actor guardado correctamente');
+    document.getElementById('btn-reset-actor').click();
     btn.disabled = false;
     btn.textContent = 'guardar actor';
   });
@@ -969,6 +1051,9 @@
   document.getElementById('btn-reset-actor').addEventListener('click', () => {
     ['actor-nombres','actor-ap','actor-am','actor-email','actor-phone','actor-posicion']
       .forEach(id => document.getElementById(id).value = '');
+    document.getElementById('proy-select-actor').value = '';
+    proyVinculados = [];
+    renderProyChips();
   });
 
   // ── Init ──
