@@ -97,19 +97,38 @@ Vincula proyectos con instituciones. La combinación `(proyecto_id, institucion_
 |---|---|---|
 | `proyecto_id` | bigint FK | Referencia a `proyectos.id` |
 | `institucion_id` | bigint FK | Referencia a `instituciones.id` |
-| `tipo_participacion` | text | Rol de la institución (ej. financiadora, ejecutora, aliada) |
+| `tipo_participacion` | text | Rol de la institución — valor controlado por catálogo `cat_tipos_participacion` (en definición) |
 
 ---
 
 ### `proyecto_actores`
 
-Vincula proyectos con actores. La combinación `(proyecto_id, actor_id)` es única.
+Vincula proyectos con actores. La combinación `(proyecto_id, actor_id)` es única. Un actor puede ser responsable técnico de varios proyectos.
 
 | Campo | Tipo | Descripción |
 |---|---|---|
 | `proyecto_id` | bigint FK | Referencia a `proyectos.id` |
 | `actor_id` | bigint FK | Referencia a `actores.id` |
-| `posicion_proyecto` | text | Rol específico del actor dentro de este proyecto |
+| `posicion_proyecto` | text | Rol del actor en el proyecto. Valor actual: `responsable_tecnico` (campo preparado para catálogo futuro) |
+
+**SQL de creación:**
+
+```sql
+create table public.proyecto_actores (
+  proyecto_id       bigint not null references public.proyectos(id) on delete cascade,
+  actor_id          bigint not null references public.actores(id)   on delete cascade,
+  posicion_proyecto text null,
+  constraint proyecto_actores_pkey primary key (proyecto_id, actor_id)
+) tablespace pg_default;
+
+alter table public.proyecto_actores enable row level security;
+
+create policy "Lectura pública"
+on public.proyecto_actores for select to anon using (true);
+
+create policy "Insert autenticado"
+on public.proyecto_actores for insert to authenticated with check (true);
+```
 
 ---
 
@@ -196,6 +215,31 @@ insert into cat_tipos_institucion (nombre) values
   ('Embajada / Consulado'),
   ('Otro');
 ```
+
+### `cat_tipos_participacion`
+
+Catálogo controlado del rol que tiene una institución dentro de un proyecto (ej. ejecutora, financiadora, aliada). El contenido está en definición; la tabla ya existe en Supabase lista para recibir valores.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `id` | smallint | Identificador autoincremental |
+| `nombre` | text | Nombre del tipo de participación (único) |
+
+**SQL de creación:**
+
+```sql
+create table public.cat_tipos_participacion (
+  id     smallint primary key generated always as identity,
+  nombre text not null unique
+);
+
+alter table public.cat_tipos_participacion enable row level security;
+
+create policy "Lectura pública"
+on public.cat_tipos_participacion for select to anon using (true);
+```
+
+> Para agregar valores una vez definido el catálogo: `insert into cat_tipos_participacion (nombre) values ('Ejecutora'), ('Financiadora'), ...;`
 
 ---
 
