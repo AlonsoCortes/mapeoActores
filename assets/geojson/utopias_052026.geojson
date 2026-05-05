@@ -1,0 +1,18 @@
+{
+"type": "FeatureCollection",
+"name": "utopias_052026",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "id": null, "nombre": "Utopía Cuauhtlicalli" }, "geometry": { "type": "Point", "coordinates": [ -99.1097406, 19.3667713, 0.0 ] } },
+{ "type": "Feature", "properties": { "id": null, "nombre": "Utopía La Cascada Xicoténcatl" }, "geometry": { "type": "Point", "coordinates": [ -99.0251978, 19.3819952, 0.0 ] } },
+{ "type": "Feature", "properties": { "id": null, "nombre": "Utopía Olini" }, "geometry": { "type": "Point", "coordinates": [ -99.0439196, 19.3811672, 0.0 ] } },
+{ "type": "Feature", "properties": { "id": null, "nombre": "Barco Utopía" }, "geometry": { "type": "Point", "coordinates": [ -99.0571862, 19.3623, 0.0 ] } },
+{ "type": "Feature", "properties": { "id": null, "nombre": "Utopia Meyehualco" }, "geometry": { "type": "Point", "coordinates": [ -99.0492642, 19.3458837, 0.0 ] } },
+{ "type": "Feature", "properties": { "id": null, "nombre": "Utopía Livertad" }, "geometry": { "type": "Point", "coordinates": [ -99.0654534, 19.3247821, 0.0 ] } },
+{ "type": "Feature", "properties": { "id": null, "nombre": "Utopía Tezontli" }, "geometry": { "type": "Point", "coordinates": [ -99.0736234, 19.3099752, 0.0 ] } },
+{ "type": "Feature", "properties": { "id": null, "nombre": "Utopía Papalotl" }, "geometry": { "type": "Point", "coordinates": [ -99.032341, 19.3421459, 0.0 ] } },
+{ "type": "Feature", "properties": { "id": null, "nombre": "Utopía Tecoloxtitlan" }, "geometry": { "type": "Point", "coordinates": [ -99.0204252, 19.3618124, 0.0 ] } },
+{ "type": "Feature", "properties": { "id": null, "nombre": "Utopía Teotongo" }, "geometry": { "type": "Point", "coordinates": [ -98.9936227, 19.3552675, 0.0 ] } },
+{ "type": "Feature", "properties": { "id": "Capa_sin_t__tulo.11", "nombre": "Utopía Mixiuhca" }, "geometry": { "type": "Point", "coordinates": [ -99.088427031475405, 19.40709352963, 0.0 ] } }
+]
+}

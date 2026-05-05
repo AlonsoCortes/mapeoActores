@@ -164,23 +164,23 @@
 
   #btn-mapa {
     font-family: var(--mono); font-size: 11px; font-weight: 500;
-    color: rgba(255,255,255,0.8);
+    color: var(--muted);
     text-decoration: none;
-    border: 1px solid rgba(255,255,255,0.25);
+    border: 1px solid var(--border);
     padding: 4px 10px; border-radius: 4px;
     transition: all 0.2s;
   }
-  #btn-mapa:hover { border-color: var(--accent-gold); color: var(--accent-gold); }
+  #btn-mapa:hover { border-color: var(--accent); color: var(--accent); }
 
   #btn-help {
     background: none;
-    border: 1px solid rgba(255,255,255,0.25);
-    color: rgba(255,255,255,0.7);
+    border: 1px solid var(--border);
+    color: var(--muted);
     font-family: var(--mono); font-size: 11px;
     padding: 4px 10px; border-radius: 4px; cursor: pointer;
     transition: all 0.2s;
   }
-  #btn-help:hover { border-color: var(--accent-gold); color: var(--accent-gold); }
+  #btn-help:hover { border-color: var(--accent); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -190,7 +190,11 @@
 
 <!-- ── HEADER ── -->
 <header>
-  <h1>SECTEI <span>Registro de proyectos</span></h1>
+  <div class="header-brand">
+    <img src="../assets/img/logos/Logo_CDMX.png" alt="Ciudad de México" class="header-logo">
+    <div class="header-sep"></div>
+    <img src="../assets/img/logos/Logo_Dependencia.png" alt="SECTEI" class="header-logo">
+  </div>
   <div id="user-info" style="display:none">
     <span id="user-email"></span>
     <a href="../mapa.html" id="btn-mapa">&#8592; ver mapa</a>

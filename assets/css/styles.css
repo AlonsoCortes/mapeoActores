@@ -29,44 +29,45 @@ body {
 
 /* ── Header ── */
 header {
-  background: var(--header-dark);
-  padding: 0.85rem 2rem;
+  background: #fff;
+  padding: 0.6rem 2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-header h1 {
-  font-family: var(--sans);
-  font-size: 13px;
-  font-weight: 600;
-  color: #FFFFFF;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.header-brand {
+  display: flex;
+  align-items: center;
 }
 
-header h1 span {
-  color: var(--accent-gold);
-  font-weight: 300;
-  margin-left: 0.5rem;
-  letter-spacing: 0.04em;
+.header-logo {
+  height: 48px;
+  width: auto;
+}
+
+.header-sep {
+  width: 1px;
+  height: 40px;
+  background: var(--accent);
+  margin: 0 1.25rem;
 }
 
 #user-info {
   font-family: var(--mono);
   font-size: 12px;
-  color: rgba(255,255,255,0.6);
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 1rem;
 }
 
-#user-info span { color: #FFFFFF; }
+#user-info span { color: var(--text); }
 
 #btn-logout {
   background: none;
-  border: 1px solid rgba(255,255,255,0.25);
-  color: rgba(255,255,255,0.7);
+  border: 1px solid var(--border);
+  color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
   padding: 4px 10px;
