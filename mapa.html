@@ -30,6 +30,8 @@
       justify-content: space-between;
     }
 
+    .map-header .header-logo { height: 60px; }
+
     .map-header a {
       font-family: var(--sans);
       font-size: 12px;
@@ -48,7 +50,7 @@
 
     .header-stripe {
       position: absolute;
-      top: 68px; left: 0; right: 0;
+      top: 80px; left: 0; right: 0;
       height: 3px;
       background: var(--accent);
       z-index: 10;
@@ -57,7 +59,7 @@
     /* ── Panel de leyenda / filtros ── */
     .panel {
       position: absolute;
-      top: 84px;
+      top: 96px;
       right: 1rem;
       z-index: 10;
       background: var(--surface);
@@ -223,6 +225,114 @@
       box-shadow: 0 4px 20px rgba(0,0,0,0.12);
     }
 
+    /* ── Sidebar lateral ── */
+    #sidebar {
+      position: absolute;
+      top: 83px; left: 0;
+      width: 290px;
+      height: calc(100% - 83px);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 4px 0 16px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 0.75rem 1rem 0.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .sidebar-count {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+
+    .sidebar-filters {
+      padding: 0.6rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #search-proyecto {
+      width: 100%;
+      padding: 0.45rem 0.6rem;
+      font-size: 13px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: var(--sans);
+      background: var(--surface);
+      color: var(--text);
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    #search-proyecto:focus { border-color: var(--accent); }
+
+    #filter-tematica {
+      width: 100%;
+      padding: 0.4rem 0.6rem;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: var(--sans);
+      background: var(--surface);
+      color: var(--text);
+      box-sizing: border-box;
+    }
+
+    #lista-proyectos {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.25rem 0;
+    }
+
+    .proy-card {
+      padding: 0.6rem 1rem;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+
+    .proy-card:hover { background: rgba(122,21,53,0.06); }
+
+    .proy-nombre {
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 500;
+      font-family: var(--sans);
+      line-height: 1.3;
+    }
+
+    .proy-tematica {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--sans);
+      font-style: italic;
+    }
+
+    .sidebar-empty {
+      padding: 1.5rem 1rem;
+      font-size: 13px;
+      color: var(--muted);
+      font-family: var(--sans);
+      text-align: center;
+    }
+
+    /* Ajustar panel-sec para que no quede bajo el sidebar */
+    .panel-sec { left: calc(290px + 1rem); }
+
     /* ── Loader ── */
     #loader {
       position: absolute;
@@ -249,7 +359,6 @@
 <div class="map-header">
   <div class="header-brand">
     <img src="assets/img/logos/Logo_CDMX.png" alt="Ciudad de México" class="header-logo">
-    <div class="header-sep"></div>
     <img src="assets/img/logos/Logo_Dependencia.png" alt="SECTEI" class="header-logo">
   </div>
   <a href="admin/">+ registrar</a>
@@ -290,6 +399,22 @@
   </div>
 </div>
 
+<aside id="sidebar">
+  <div class="sidebar-header">
+    <p class="panel-title" style="margin:0">Proyectos</p>
+    <span class="sidebar-count" id="sidebar-count">—</span>
+  </div>
+  <div class="sidebar-filters">
+    <input type="text" id="search-proyecto" placeholder="Buscar por nombre…" autocomplete="off"/>
+    <select id="filter-tematica">
+      <option value="">Todas las temáticas</option>
+    </select>
+  </div>
+  <div id="lista-proyectos">
+    <p class="sidebar-empty">Cargando proyectos…</p>
+  </div>
+</aside>
+
 <div id="loader">cargando datos…</div>
 
 <script>
@@ -307,13 +432,16 @@
   mapa.addControl(new maplibregl.NavigationControl(), 'bottom-right');
   mapa.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
+  // ── Estado del sidebar ──
+  let todosProyectos = [];
+
   // ── Carga de datos ──
   async function cargarDatos() {
     document.getElementById('loader').style.display = 'block';
 
     const [{ data: proyectos }, { data: instituciones }] = await Promise.all([
       db.from('proyectos').select(`
-        id, nombre, objetivo, latitud, longitud,
+        id, nombre, objetivo, latitud, longitud, tematica,
         proyectos_instituciones (
           tipo_participacion,
           instituciones ( nombre, tipo )
@@ -332,6 +460,9 @@
     const nInst = geoInst.features.length;
     document.getElementById('conteo').innerHTML =
       `<strong>${nProy}</strong> proyectos · <strong>${nInst}</strong> instituciones`;
+
+    todosProyectos = (proyectos || []).filter(p => p.latitud && p.longitud);
+    poblarSidebar(todosProyectos);
 
     document.getElementById('loader').style.display = 'none';
   }
@@ -417,6 +548,83 @@
       .setLngLat(coords)
       .setHTML(html)
       .addTo(mapa);
+  }
+
+  // ── Sidebar: render de tarjetas ──
+  function poblarSidebar(proyectos) {
+    const lista    = document.getElementById('lista-proyectos');
+    const contador = document.getElementById('sidebar-count');
+    const selTem   = document.getElementById('filter-tematica');
+
+    // Poblar dropdown de temáticas solo la primera vez
+    if (selTem.options.length === 1) {
+      const tematicas = [...new Set(
+        todosProyectos.map(p => p.tematica).filter(Boolean)
+      )].sort();
+      tematicas.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        selTem.appendChild(opt);
+      });
+    }
+
+    lista.innerHTML = '';
+
+    if (!proyectos.length) {
+      lista.innerHTML = '<p class="sidebar-empty">Sin resultados</p>';
+      contador.textContent = '0 resultados';
+      return;
+    }
+
+    proyectos.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'proy-card';
+      card.dataset.id = p.id;
+      card.innerHTML = `
+        <span class="proy-nombre">${p.nombre}</span>
+        ${p.tematica ? `<span class="proy-tematica">${p.tematica}</span>` : ''}
+      `;
+      card.addEventListener('click', () => {
+        mapa.flyTo({ center: [p.longitud, p.latitud], zoom: 14, duration: 800 });
+
+        const insts = Array.isArray(p.proyectos_instituciones) ? p.proyectos_instituciones : [];
+        const tagsHTML = insts.length
+          ? insts.map(pi => {
+              const nombre = pi.instituciones?.nombre ?? '—';
+              const tipo   = pi.tipo_participacion ? ` · ${pi.tipo_participacion}` : '';
+              return `<span class="popup-inst-tag">${nombre}${tipo}</span>`;
+            }).join('')
+          : '<span class="popup-meta">Sin instituciones vinculadas</span>';
+
+        new maplibregl.Popup({ closeButton: true, maxWidth: '300px' })
+          .setLngLat([p.longitud, p.latitud])
+          .setHTML(`
+            <p class="popup-tipo">Proyecto</p>
+            <p class="popup-nombre">${p.nombre}</p>
+            ${p.objetivo ? `<p class="popup-meta">${p.objetivo}</p>` : ''}
+            <div class="popup-inst-list">${tagsHTML}</div>
+          `)
+          .addTo(mapa);
+      });
+      lista.appendChild(card);
+    });
+
+    contador.textContent = `${proyectos.length} resultado${proyectos.length !== 1 ? 's' : ''}`;
+  }
+
+  // ── Sidebar: filtrado combinado ──
+  function filtrarSidebar() {
+    const texto   = document.getElementById('search-proyecto').value.toLowerCase().trim();
+    const tematica = document.getElementById('filter-tematica').value;
+
+    const filtrados = todosProyectos.filter(p => {
+      const coincideNombre = p.nombre.toLowerCase().includes(texto);
+      const coincideTem    = !tematica || p.tematica === tematica;
+      return coincideNombre && coincideTem;
+    });
+
+    poblarSidebar(filtrados);
   }
 
   // ── Capas estáticas GeoJSON ──
@@ -596,6 +804,8 @@
     cargarDatos().then(() => {
       toggleCapa('proyectos',    'toggle-proyectos');
       toggleCapa('instituciones', 'toggle-instituciones');
+      document.getElementById('search-proyecto').addEventListener('input',  filtrarSidebar);
+      document.getElementById('filter-tematica').addEventListener('change', filtrarSidebar);
     });
   });
 </script>

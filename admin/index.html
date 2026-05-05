@@ -222,6 +222,27 @@
   </div>
 </div>
 
+<!-- ── SET PASSWORD (invitación) ── -->
+<div id="set-password-screen" style="display:none">
+  <div class="login-box">
+    <h2>// bienvenido</h2>
+    <p style="font-family:var(--sans);font-size:13px;color:var(--muted);margin-bottom:1rem;line-height:1.5">
+      Establece una contraseña para activar tu cuenta.
+    </p>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="field">
+        <label>nueva contraseña <span class="req">*</span></label>
+        <input type="password" id="new-password" placeholder="mínimo 6 caracteres"/>
+      </div>
+      <div class="field">
+        <label>confirmar contraseña <span class="req">*</span></label>
+        <input type="password" id="confirm-password" placeholder="repite tu contraseña"/>
+      </div>
+      <button class="btn-primary" id="btn-set-password" style="margin-top:0.5rem">establecer contraseña</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── APP ── -->
 <div id="app-screen">
 
@@ -611,6 +632,34 @@
     await db.auth.signOut();
     location.reload();
   });
+
+  // ── Invitación: establecer contraseña ──
+  function mostrarSetPassword() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('set-password-screen').style.display = 'flex';
+  }
+
+  async function guardarPassword() {
+    const pass    = document.getElementById('new-password').value;
+    const confirm = document.getElementById('confirm-password').value;
+    if (pass.length < 6)    return toast('La contraseña debe tener al menos 6 caracteres', 'error');
+    if (pass !== confirm)   return toast('Las contraseñas no coinciden', 'error');
+    const btn = document.getElementById('btn-set-password');
+    btn.disabled = true; btn.textContent = 'guardando...';
+    const { error } = await db.auth.updateUser({ password: pass });
+    if (error) {
+      toast('Error: ' + error.message, 'error');
+      btn.disabled = false; btn.textContent = 'establecer contraseña';
+    } else {
+      history.replaceState(null, '', window.location.pathname);
+      document.getElementById('set-password-screen').style.display = 'none';
+      const { data: { session } } = await db.auth.getSession();
+      showApp(session.user.email);
+    }
+  }
+
+  document.getElementById('btn-set-password').addEventListener('click', guardarPassword);
+  document.getElementById('confirm-password').addEventListener('keydown', e => { if (e.key === 'Enter') guardarPassword(); });
 
   // ── Mapa proyecto ──
   const mapProy = L.map('map-picker').setView([19.432608, -99.133209], 11);
@@ -1070,7 +1119,14 @@
 
   // ── Init ──
   loadAlcaldias();
-  checkSession();
+  const _hashParams = new URLSearchParams(window.location.hash.slice(1));
+  if (_hashParams.get('type') === 'invite') {
+    db.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) mostrarSetPassword();
+    });
+  } else {
+    checkSession();
+  }
 </script>
 </body>
 </html>
