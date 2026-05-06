@@ -6,9 +6,7 @@
   <title>Mapa de proyectos — SECTEI</title>
   <link rel="stylesheet" href="assets/css/styles.css"/>
   <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet"/>
-  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
-  <script src="assets/js/config.js"></script>
   <style>
     body { overflow: hidden; }
 
@@ -422,9 +420,6 @@
 <div id="loader">cargando datos…</div>
 
 <script>
-  const { createClient } = supabase;
-  const db = createClient(SUPABASE_URL, SUPABASE_ANON);
-
   // ── Mapa ──
   const mapa = new maplibregl.Map({
     container: 'mapa',
@@ -443,27 +438,18 @@
   async function cargarDatos() {
     document.getElementById('loader').style.display = 'block';
 
-    const [{ data: proyectos }, { data: instituciones }] = await Promise.all([
-      db.from('proyectos').select(`
-        id, nombre, objetivo, tipo_proyecto,
-        proyecto_tematicas ( tematica ),
-        proyecto_ubicaciones ( latitud, longitud ),
-        proyectos_instituciones (
-          tipo_participacion,
-          instituciones ( nombre, tipo )
-        )
-      `),
-      db.from('instituciones').select('id, nombre, tipo, alcaldia, latitud, longitud, nivel, parent_id'),
+    // El servidor devuelve tematicas[], ubicaciones[{lat,lng}] y
+    // proyectos_instituciones[] ya normalizados — sin necesidad de mapear
+    const [proyectos, instituciones] = await Promise.all([
+      fetch('/api/proyectos').then(r => r.json()),
+      fetch('/api/instituciones').then(r => r.json()),
     ]);
 
-    const proyectosNorm = (proyectos || []).map(p => ({
-      ...p,
-      tematicas:   (p.proyecto_tematicas   || []).map(t => t.tematica),
-      ubicaciones: (p.proyecto_ubicaciones || []).map(u => ({ lat: u.latitud, lng: u.longitud })),
-    }));
+    const proyectosNorm = proyectos   || [];
+    const instNorm      = instituciones || [];
 
     const geoProy = toGeoJSON(proyectosNorm, 'proyecto');
-    const geoInst = toGeoJSON(instituciones || [], 'institucion');
+    const geoInst = toGeoJSON(instNorm, 'institucion');
 
     agregarCapa(mapa, 'proyectos',    geoProy, '#7A1535', 9);
     agregarCapa(mapa, 'instituciones', geoInst, '#0B3D2E', 7);
@@ -473,7 +459,7 @@
     document.getElementById('conteo').innerHTML =
       `<strong>${nProy}</strong> proyectos · <strong>${nInst}</strong> instituciones`;
 
-    todosProyectos = proyectosNorm.filter(p => p.ubicaciones.length > 0);
+    todosProyectos = proyectosNorm.filter(p => (p.ubicaciones || []).length > 0);
     poblarSidebar(todosProyectos);
 
     document.getElementById('loader').style.display = 'none';

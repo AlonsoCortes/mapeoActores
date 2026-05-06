@@ -44,12 +44,33 @@ Ejemplo: UNAM (1) › Facultad de Arquitectura (2) › Laboratorio de Planeació
 | `longitud` | float8 | no | Coordenada geográfica — longitud |
 | `created_at` | timestamptz | auto | Fecha y hora de creación del registro |
 
-**Migración SQL** (ejecutar en Supabase si la tabla ya existe):
+**SQL de creación:**
 
 ```sql
-alter table instituciones
-  add column nivel     smallint not null default 1 check (nivel in (1, 2, 3)),
-  add column parent_id bigint references instituciones(id) on delete set null;
+CREATE TABLE public.instituciones (
+  id         bigint      PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre     text        NOT NULL,
+  nivel      smallint    NOT NULL DEFAULT 1 CHECK (nivel IN (1, 2, 3)),
+  parent_id  bigint      REFERENCES public.instituciones(id) ON DELETE SET NULL,
+  tipo       text,
+  alcaldia   text,
+  colonia    text,
+  latitud    float8,
+  longitud   float8,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.instituciones ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Lectura pública"    ON public.instituciones FOR SELECT TO anon        USING (true);
+CREATE POLICY "Insert autenticado" ON public.instituciones FOR INSERT TO authenticated WITH CHECK (true);
+```
+
+**Migración SQL** (si la tabla ya existe sin los campos de jerarquía):
+
+```sql
+ALTER TABLE instituciones
+  ADD COLUMN nivel     smallint NOT NULL DEFAULT 1 CHECK (nivel IN (1, 2, 3)),
+  ADD COLUMN parent_id bigint REFERENCES instituciones(id) ON DELETE SET NULL;
 ```
 
 ---
@@ -65,6 +86,28 @@ Almacena los proyectos registrados. Las ubicaciones geográficas se manejan en l
 | `objetivo` | text | no | Descripción del objetivo principal |
 | `tipo_proyecto` | text | no | Clasificación del proyecto — valor controlado por catálogo `TIPOS_PROYECTO` |
 | `created_at` | timestamptz | auto | Fecha y hora de creación del registro |
+
+**SQL de creación:**
+
+```sql
+CREATE TABLE public.proyectos (
+  id            bigint      PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre        text        NOT NULL,
+  objetivo      text,
+  tipo_proyecto text,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.proyectos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Lectura pública"    ON public.proyectos FOR SELECT TO anon        USING (true);
+CREATE POLICY "Insert autenticado" ON public.proyectos FOR INSERT TO authenticated WITH CHECK (true);
+```
+
+**Migración SQL** (si la tabla ya existe sin `tipo_proyecto`):
+
+```sql
+ALTER TABLE proyectos ADD COLUMN IF NOT EXISTS tipo_proyecto text;
+```
 
 ---
 
@@ -83,6 +126,25 @@ Almacena las personas de contacto vinculadas a los proyectos. No tiene ubicació
 | `posicion` | text | no | Cargo o posición general de la persona |
 | `created_at` | timestamptz | auto | Fecha y hora de creación del registro |
 
+**SQL de creación:**
+
+```sql
+CREATE TABLE public.actores (
+  id         bigint      PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombres    text        NOT NULL,
+  apellido_p text        NOT NULL,
+  apellido_m text        NOT NULL,
+  email      text        NOT NULL,
+  phone      text,
+  posicion   text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.actores ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Lectura pública"    ON public.actores FOR SELECT TO anon        USING (true);
+CREATE POLICY "Insert autenticado" ON public.actores FOR INSERT TO authenticated WITH CHECK (true);
+```
+
 ---
 
 ## Tablas intermedias
@@ -98,6 +160,21 @@ Vincula proyectos con instituciones. La combinación `(proyecto_id, institucion_
 | `proyecto_id` | bigint FK | Referencia a `proyectos.id` |
 | `institucion_id` | bigint FK | Referencia a `instituciones.id` |
 | `tipo_participacion` | text | Rol de la institución — valor controlado por catálogo `cat_tipos_participacion` (en definición) |
+
+**SQL de creación:**
+
+```sql
+CREATE TABLE public.proyectos_instituciones (
+  proyecto_id        bigint NOT NULL REFERENCES public.proyectos(id)     ON DELETE CASCADE,
+  institucion_id     bigint NOT NULL REFERENCES public.instituciones(id) ON DELETE CASCADE,
+  tipo_participacion text,
+  CONSTRAINT proyectos_instituciones_pkey PRIMARY KEY (proyecto_id, institucion_id)
+);
+
+ALTER TABLE public.proyectos_instituciones ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Lectura pública"    ON public.proyectos_instituciones FOR SELECT TO anon        USING (true);
+CREATE POLICY "Insert autenticado" ON public.proyectos_instituciones FOR INSERT TO authenticated WITH CHECK (true);
+```
 
 ---
 
@@ -328,6 +405,188 @@ on public.cat_tipos_participacion for select to anon using (true);
 ```
 
 > Para agregar valores una vez definido el catálogo: `insert into cat_tipos_participacion (nombre) values ('Ejecutora'), ('Financiadora'), ...;`
+
+---
+
+## Queries útiles
+
+Consultas SQL para ejecutar directamente en el **SQL Editor de Supabase**.
+
+---
+
+### Resumen general
+
+```sql
+-- Conteo de registros por tabla principal
+SELECT
+  (SELECT COUNT(*) FROM proyectos)     AS proyectos,
+  (SELECT COUNT(*) FROM instituciones) AS instituciones,
+  (SELECT COUNT(*) FROM actores)       AS actores;
+```
+
+---
+
+### Proyectos
+
+```sql
+-- Todos los proyectos con sus temáticas, número de ubicaciones e instituciones vinculadas
+SELECT
+  p.id,
+  p.nombre,
+  p.tipo_proyecto,
+  COUNT(DISTINCT pu.id)  AS num_ubicaciones,
+  COUNT(DISTINCT pi.institucion_id) AS num_instituciones,
+  STRING_AGG(DISTINCT pt.tematica, ' · ' ORDER BY pt.tematica) AS tematicas
+FROM proyectos p
+LEFT JOIN proyecto_ubicaciones  pu ON pu.proyecto_id = p.id
+LEFT JOIN proyectos_instituciones pi ON pi.proyecto_id = p.id
+LEFT JOIN proyecto_tematicas    pt ON pt.proyecto_id = p.id
+GROUP BY p.id, p.nombre, p.tipo_proyecto
+ORDER BY p.nombre;
+```
+
+```sql
+-- Proyectos sin ubicación registrada
+SELECT p.id, p.nombre
+FROM proyectos p
+WHERE NOT EXISTS (
+  SELECT 1 FROM proyecto_ubicaciones pu WHERE pu.proyecto_id = p.id
+);
+```
+
+```sql
+-- Proyectos con más de una ubicación
+SELECT p.id, p.nombre, COUNT(pu.id) AS num_ubicaciones
+FROM proyectos p
+JOIN proyecto_ubicaciones pu ON pu.proyecto_id = p.id
+GROUP BY p.id, p.nombre
+HAVING COUNT(pu.id) > 1
+ORDER BY num_ubicaciones DESC;
+```
+
+```sql
+-- Cantidad de proyectos por tipo
+SELECT
+  COALESCE(tipo_proyecto, '(sin tipo)') AS tipo,
+  COUNT(*) AS total
+FROM proyectos
+GROUP BY tipo_proyecto
+ORDER BY total DESC;
+```
+
+```sql
+-- Cantidad de proyectos por temática
+SELECT
+  pt.tematica,
+  COUNT(DISTINCT pt.proyecto_id) AS total
+FROM proyecto_tematicas pt
+GROUP BY pt.tematica
+ORDER BY total DESC;
+```
+
+---
+
+### Instituciones
+
+```sql
+-- Instituciones con su jerarquía (padre → hijo)
+SELECT
+  hijo.id,
+  hijo.nombre                       AS institucion,
+  hijo.nivel,
+  padre.nombre                      AS pertenece_a,
+  hijo.tipo,
+  hijo.alcaldia
+FROM instituciones hijo
+LEFT JOIN instituciones padre ON padre.id = hijo.parent_id
+ORDER BY padre.nombre NULLS FIRST, hijo.nombre;
+```
+
+```sql
+-- Instituciones sin coordenadas (no aparecerán en el mapa)
+SELECT id, nombre, nivel, alcaldia
+FROM instituciones
+WHERE latitud IS NULL OR longitud IS NULL
+ORDER BY nombre;
+```
+
+```sql
+-- Cantidad de instituciones por tipo
+SELECT
+  COALESCE(tipo, '(sin tipo)') AS tipo,
+  COUNT(*) AS total
+FROM instituciones
+GROUP BY tipo
+ORDER BY total DESC;
+```
+
+```sql
+-- Cantidad de instituciones por alcaldía
+SELECT
+  COALESCE(alcaldia, '(sin alcaldía)') AS alcaldia,
+  COUNT(*) AS total
+FROM instituciones
+GROUP BY alcaldia
+ORDER BY total DESC;
+```
+
+---
+
+### Actores
+
+```sql
+-- Actores con los proyectos en los que participan
+SELECT
+  a.nombres || ' ' || a.apellido_p || ' ' || a.apellido_m AS actor,
+  a.email,
+  a.posicion,
+  STRING_AGG(p.nombre, ' · ' ORDER BY p.nombre) AS proyectos
+FROM actores a
+LEFT JOIN proyecto_actores pa ON pa.actor_id = a.id
+LEFT JOIN proyectos p         ON p.id = pa.proyecto_id
+GROUP BY a.id, a.nombres, a.apellido_p, a.apellido_m, a.email, a.posicion
+ORDER BY a.apellido_p, a.apellido_m;
+```
+
+```sql
+-- Actores sin proyecto asignado
+SELECT a.id, a.nombres, a.apellido_p, a.email
+FROM actores a
+WHERE NOT EXISTS (
+  SELECT 1 FROM proyecto_actores pa WHERE pa.actor_id = a.id
+);
+```
+
+---
+
+### Relaciones proyecto ↔ institución
+
+```sql
+-- Detalle completo: proyectos con todas sus instituciones vinculadas
+SELECT
+  p.nombre                          AS proyecto,
+  p.tipo_proyecto,
+  i.nombre                          AS institucion,
+  i.tipo                            AS tipo_institucion,
+  pi.tipo_participacion
+FROM proyectos p
+JOIN proyectos_instituciones pi ON pi.proyecto_id   = p.id
+JOIN instituciones           i  ON i.id = pi.institucion_id
+ORDER BY p.nombre, i.nombre;
+```
+
+```sql
+-- Instituciones que participan en más de un proyecto
+SELECT
+  i.nombre,
+  i.tipo,
+  COUNT(DISTINCT pi.proyecto_id) AS num_proyectos
+FROM instituciones i
+JOIN proyectos_instituciones pi ON pi.institucion_id = i.id
+GROUP BY i.id, i.nombre, i.tipo
+HAVING COUNT(DISTINCT pi.proyecto_id) > 1
+ORDER BY num_proyectos DESC;
+```
 
 ---
 

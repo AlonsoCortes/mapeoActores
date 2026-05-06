@@ -47,10 +47,33 @@ mapeoActores/
 ├── docs/
 │   ├── base_de_datos.md         ← documentación de la base de datos
 │   └── contexto.md              ← contexto del proyecto
+├── server/                      ← servidor local para pruebas (rama local-postgres)
+│   ├── server.js                ← Express + pg: API REST sobre PostgreSQL local
+│   ├── package.json
+│   └── README.md                ← cómo funciona la conexión BD ↔ servidor ↔ frontend
 └── .github/
     └── workflows/
         └── deploy.yml           ← genera config.js e inyecta credenciales en cada deploy
 ```
+
+---
+
+## Desarrollo local con PostgreSQL
+
+La rama `local-postgres` contiene un servidor Express que reemplaza Supabase
+por una base de datos PostgreSQL local. Es útil para entender cómo funciona
+la capa de acceso a datos y para pruebas sin depender de internet.
+
+```bash
+git checkout local-postgres
+cd server
+npm install
+npm start
+# → http://localhost:3000/api/ping
+```
+
+Ver [`server/README.md`](server/README.md) para la explicación completa de la
+arquitectura, los endpoints disponibles y cómo difiere de Supabase.
 
 ---
 
