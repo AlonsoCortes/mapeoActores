@@ -181,6 +181,38 @@
     transition: all 0.2s;
   }
   #btn-help:hover { border-color: var(--accent); color: var(--accent); }
+
+  .chips-group {
+    display: flex; flex-wrap: wrap; gap: 0.45rem;
+  }
+  .chip-tema {
+    padding: 0.3rem 0.8rem;
+    border: 1px solid var(--border); border-radius: 20px;
+    font-family: var(--sans); font-size: 12px; font-weight: 500;
+    color: var(--text); background: var(--surface);
+    cursor: pointer; user-select: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    text-transform: none; letter-spacing: normal; line-height: 1.5;
+  }
+  .chip-tema:hover { border-color: var(--accent); color: var(--accent); }
+  .chip-tema.active {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+
+  .ubicaciones-list {
+    list-style: none; margin: 0.4rem 0 0; padding: 0;
+    display: flex; flex-direction: column; gap: 0.3rem;
+  }
+  .ubicaciones-list li {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 0.25rem 0.5rem;
+  }
+  .ubicaciones-list button {
+    background: none; border: none; cursor: pointer;
+    color: var(--danger, #e53e3e); font-size: 14px; line-height: 1;
+  }
 </style>
 </head>
 <body>
@@ -264,17 +296,21 @@
         <label>objetivo</label>
         <textarea id="proy-objetivo" placeholder="Describe el objetivo principal del proyecto" spellcheck="true"></textarea>
       </div>
+      <div class="field full">
+        <label>temática</label>
+        <div id="proy-tematica-checks" class="chips-group"></div>
+      </div>
+      <div class="field full">
+        <label>tipo de proyecto</label>
+        <select id="proy-tipo"><option value="">— selecciona —</option></select>
+      </div>
     </div>
 
     <hr class="section-divider"/>
     <p class="section-title">ubicación en mapa</p>
     <div id="map-picker" class="map-container"></div>
-    <p class="map-hint">Haz clic en el mapa para marcar la ubicación del proyecto</p>
-    <div class="coords-display">
-      lat: <span id="proy-lat-display">—</span> &nbsp; lng: <span id="proy-lng-display">—</span>
-    </div>
-    <input type="hidden" id="proy-lat"/>
-    <input type="hidden" id="proy-lng"/>
+    <p class="map-hint">Haz clic en el mapa para añadir una ubicación. Puedes añadir varias.</p>
+    <ul id="proy-ubicaciones-list" class="ubicaciones-list"></ul>
 
     <hr class="section-divider"/>
     <p class="section-title">instituciones vinculadas</p>
@@ -667,16 +703,31 @@
     attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
   }).addTo(mapProy);
 
-  let markerProy = null;
+  let marcadoresProy = [];
+  let ubicacionesProy = [];
+
   mapProy.on('click', e => {
     const { lat, lng } = e.latlng;
-    if (markerProy) markerProy.setLatLng(e.latlng);
-    else markerProy = L.marker(e.latlng).addTo(mapProy);
-    document.getElementById('proy-lat').value = lat.toFixed(6);
-    document.getElementById('proy-lng').value = lng.toFixed(6);
-    document.getElementById('proy-lat-display').textContent = lat.toFixed(6);
-    document.getElementById('proy-lng-display').textContent = lng.toFixed(6);
+    ubicacionesProy.push({ lat, lng });
+    marcadoresProy.push(L.marker(e.latlng).addTo(mapProy));
+    renderUbicacionesList();
   });
+
+  function renderUbicacionesList() {
+    const ul = document.getElementById('proy-ubicaciones-list');
+    ul.innerHTML = ubicacionesProy.map((u, i) => `
+      <li>
+        <span>lat ${u.lat.toFixed(5)}, lng ${u.lng.toFixed(5)}</span>
+        <button onclick="removeUbicacion(${i})" title="Eliminar">&#x2715;</button>
+      </li>`).join('');
+  }
+
+  window.removeUbicacion = function(i) {
+    mapProy.removeLayer(marcadoresProy[i]);
+    marcadoresProy.splice(i, 1);
+    ubicacionesProy.splice(i, 1);
+    renderUbicacionesList();
+  };
 
   // ── Mapa institución ── 
   const mapInst = L.map('map-inst').setView([19.432608, -99.133209], 11);
@@ -721,6 +772,17 @@
     ['inst-alcaldia', 'org-nueva-alcaldia', 'dept-nueva-alcaldia'].forEach(id => {
       document.getElementById(id).innerHTML = '<option value="">— selecciona —</option>' + opciones;
     });
+    const checksEl = document.getElementById('proy-tematica-checks');
+    checksEl.innerHTML = TEMATICAS_PROYECTOS.map(t =>
+      `<button type="button" class="chip-tema" data-value="${t}">${t}</button>`
+    ).join('');
+    checksEl.addEventListener('click', e => {
+      const chip = e.target.closest('.chip-tema');
+      if (chip) chip.classList.toggle('active');
+    });
+    document.getElementById('proy-tipo').innerHTML =
+      '<option value="">— selecciona —</option>' +
+      TIPOS_PROYECTO.map(t => `<option value="${t}">${t}</option>`).join('');
   }
 
   // ── Cargar catálogo de tipos ──
@@ -865,8 +927,9 @@
   document.getElementById('btn-save-proyecto').addEventListener('click', async () => {
     const nombre   = document.getElementById('proy-nombre').value.trim();
     const objetivo = document.getElementById('proy-objetivo').value.trim();
-    const latitud  = document.getElementById('proy-lat').value;
-    const longitud = document.getElementById('proy-lng').value;
+    const tematicasSeleccionadas = [...document.querySelectorAll('#proy-tematica-checks .chip-tema.active')]
+      .map(chip => chip.dataset.value);
+    const tipo_proyecto = document.getElementById('proy-tipo').value.trim() || null;
 
     if (!nombre) return toast('El nombre es obligatorio', 'error');
 
@@ -875,9 +938,7 @@
     btn.textContent = 'guardando...';
 
     const { data: proy, error } = await db.from('proyectos').insert({
-      nombre, objetivo,
-      latitud:  latitud  ? parseFloat(latitud)  : null,
-      longitud: longitud ? parseFloat(longitud) : null,
+      nombre, objetivo, tipo_proyecto,
     }).select().single();
 
     if (error) {
@@ -896,6 +957,18 @@
       await db.from('proyectos_instituciones').insert(rows);
     }
 
+    if (tematicasSeleccionadas.length > 0) {
+      await db.from('proyecto_tematicas').insert(
+        tematicasSeleccionadas.map(t => ({ proyecto_id: proy.id, tematica: t }))
+      );
+    }
+
+    if (ubicacionesProy.length > 0) {
+      await db.from('proyecto_ubicaciones').insert(
+        ubicacionesProy.map(u => ({ proyecto_id: proy.id, latitud: u.lat, longitud: u.lng }))
+      );
+    }
+
     btn.disabled = false;
     btn.textContent = 'guardar proyecto';
     document.getElementById('btn-reset-proyecto').click();
@@ -905,11 +978,12 @@
   document.getElementById('btn-reset-proyecto').addEventListener('click', () => {
     document.getElementById('proy-nombre').value = '';
     document.getElementById('proy-objetivo').value = '';
-    document.getElementById('proy-lat').value = '';
-    document.getElementById('proy-lng').value = '';
-    document.getElementById('proy-lat-display').textContent = '—';
-    document.getElementById('proy-lng-display').textContent = '—';
-    if (markerProy) { mapProy.removeLayer(markerProy); markerProy = null; }
+    document.querySelectorAll('#proy-tematica-checks .chip-tema').forEach(c => c.classList.remove('active'));
+    document.getElementById('proy-tipo').value = '';
+    marcadoresProy.forEach(m => mapProy.removeLayer(m));
+    marcadoresProy = [];
+    ubicacionesProy = [];
+    document.getElementById('proy-ubicaciones-list').innerHTML = '';
     instVinculadas = [];
     renderChips();
   });

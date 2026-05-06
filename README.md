@@ -9,9 +9,13 @@ Desarrollada por la Secretaría de Educación, Ciencia, Tecnología e Innovació
 ## Funcionalidades
 
 - **Mapa público** — visualización interactiva de proyectos e instituciones sobre un mapa de la CDMX
+- **Multi-ubicación** — un proyecto puede tener varias coordenadas geográficas; cada una genera un pin independiente en el mapa
+- **Multi-temática** — un proyecto puede clasificarse en varias temáticas simultáneamente (checkboxes en el formulario, filtro en el mapa)
+- **Tipo de proyecto** — clasificación por tipo: generación de conocimiento, aplicación, etc.
 - **Formulario de captura** — registro de instituciones, proyectos y actores con acceso protegido por login
+- **Invitación de usuarios** — nuevos usuarios se incorporan mediante enlace de invitación de Supabase
 - **Jerarquía institucional** — estructura de 3 niveles: Organización › Departamento › Grupo
-- **Relaciones M:M** — una institución puede participar en varios proyectos; un actor puede ser responsable técnico de varios proyectos
+- **Relaciones M:M** — instituciones, temáticas y ubicaciones pueden vincularse a múltiples proyectos
 
 ---
 
@@ -36,11 +40,13 @@ mapeoActores/
 │   └── index.html               ← formulario de captura (requiere login)
 ├── assets/
 │   ├── css/styles.css
+│   ├── geojson/                 ← capas de contexto (alcaldías, pilares, utopías…)
 │   └── js/
 │       ├── config.js            ← credenciales Supabase (en .gitignore, generado por CI)
-│       └── catalogos.js         ← catálogos locales (alcaldías CDMX)
+│       └── catalogos.js         ← catálogos locales (tipos de proyecto, temáticas, alcaldías)
 ├── docs/
-│   └── base_de_datos.md         ← documentación de la base de datos
+│   ├── base_de_datos.md         ← documentación de la base de datos
+│   └── contexto.md              ← contexto del proyecto
 └── .github/
     └── workflows/
         └── deploy.yml           ← genera config.js e inyecta credenciales en cada deploy
@@ -66,14 +72,21 @@ El sitio se publica automáticamente en **GitHub Pages** al hacer `push` a `main
 Ver [`docs/base_de_datos.md`](docs/base_de_datos.md) para la documentación completa de tablas, relaciones, catálogos y políticas RLS.
 
 ### Tablas principales
-- `instituciones` — organizaciones con jerarquía autorreferencial
-- `proyectos` — iniciativas con coordenadas geográficas
+- `instituciones` — organizaciones con jerarquía autorreferencial (3 niveles)
+- `proyectos` — iniciativas con tipo de proyecto
 - `actores` — personas de contacto
 
 ### Tablas intermedias
 - `proyectos_instituciones` — rol de cada institución en cada proyecto
 - `proyecto_actores` — actores vinculados como responsables técnicos de proyectos
+- `proyecto_tematicas` — temáticas múltiples por proyecto (M:M)
+- `proyecto_ubicaciones` — ubicaciones geográficas múltiples por proyecto (M:M)
 
-### Catálogos
+### Catálogos en Supabase
 - `cat_tipos_institucion` — 20 tipos de institución organizados por sector
 - `cat_tipos_participacion` — roles de participación institución-proyecto (en definición)
+
+### Catálogos en JavaScript (`assets/js/catalogos.js`)
+- `TIPOS_PROYECTO` — 3 tipos de proyecto
+- `TEMATICAS_PROYECTOS` — 10 áreas temáticas
+- `ALCALDIAS_CDMX` — 16 alcaldías de la CDMX

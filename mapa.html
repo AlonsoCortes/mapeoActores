@@ -277,6 +277,7 @@
 
     #search-proyecto:focus { border-color: var(--accent); }
 
+    #filter-tipo,
     #filter-tematica {
       width: 100%;
       padding: 0.4rem 0.6rem;
@@ -406,6 +407,9 @@
   </div>
   <div class="sidebar-filters">
     <input type="text" id="search-proyecto" placeholder="Buscar por nombre…" autocomplete="off"/>
+    <select id="filter-tipo">
+      <option value="">Todos los tipos</option>
+    </select>
     <select id="filter-tematica">
       <option value="">Todas las temáticas</option>
     </select>
@@ -441,7 +445,9 @@
 
     const [{ data: proyectos }, { data: instituciones }] = await Promise.all([
       db.from('proyectos').select(`
-        id, nombre, objetivo, latitud, longitud, tematica,
+        id, nombre, objetivo, tipo_proyecto,
+        proyecto_tematicas ( tematica ),
+        proyecto_ubicaciones ( latitud, longitud ),
         proyectos_instituciones (
           tipo_participacion,
           instituciones ( nombre, tipo )
@@ -450,7 +456,13 @@
       db.from('instituciones').select('id, nombre, tipo, alcaldia, latitud, longitud, nivel, parent_id'),
     ]);
 
-    const geoProy = toGeoJSON(proyectos  || [], 'proyecto');
+    const proyectosNorm = (proyectos || []).map(p => ({
+      ...p,
+      tematicas:   (p.proyecto_tematicas   || []).map(t => t.tematica),
+      ubicaciones: (p.proyecto_ubicaciones || []).map(u => ({ lat: u.latitud, lng: u.longitud })),
+    }));
+
+    const geoProy = toGeoJSON(proyectosNorm, 'proyecto');
     const geoInst = toGeoJSON(instituciones || [], 'institucion');
 
     agregarCapa(mapa, 'proyectos',    geoProy, '#7A1535', 9);
@@ -461,7 +473,7 @@
     document.getElementById('conteo').innerHTML =
       `<strong>${nProy}</strong> proyectos · <strong>${nInst}</strong> instituciones`;
 
-    todosProyectos = (proyectos || []).filter(p => p.latitud && p.longitud);
+    todosProyectos = proyectosNorm.filter(p => p.ubicaciones.length > 0);
     poblarSidebar(todosProyectos);
 
     document.getElementById('loader').style.display = 'none';
@@ -470,13 +482,16 @@
   function toGeoJSON(registros, tipo) {
     return {
       type: 'FeatureCollection',
-      features: registros
-        .filter(r => r.latitud && r.longitud)
-        .map(r => ({
+      features: registros.flatMap(r => {
+        const pts = r.ubicaciones
+          ? r.ubicaciones.filter(u => u.lat && u.lng)
+          : (r.latitud && r.longitud ? [{ lat: r.latitud, lng: r.longitud }] : []);
+        return pts.map(u => ({
           type: 'Feature',
-          geometry: { type: 'Point', coordinates: [r.longitud, r.latitud] },
+          geometry: { type: 'Point', coordinates: [u.lng, u.lat] },
           properties: { ...r, _tipo: tipo },
-        })),
+        }));
+      }),
     };
   }
 
@@ -554,18 +569,28 @@
   function poblarSidebar(proyectos) {
     const lista    = document.getElementById('lista-proyectos');
     const contador = document.getElementById('sidebar-count');
-    const selTem   = document.getElementById('filter-tematica');
+    const selTem  = document.getElementById('filter-tematica');
+    const selTipo = document.getElementById('filter-tipo');
 
-    // Poblar dropdown de temáticas solo la primera vez
+    // Poblar dropdowns solo la primera vez
     if (selTem.options.length === 1) {
       const tematicas = [...new Set(
-        todosProyectos.map(p => p.tematica).filter(Boolean)
+        todosProyectos.flatMap(p => p.tematicas)
       )].sort();
       tematicas.forEach(t => {
         const opt = document.createElement('option');
-        opt.value = t;
-        opt.textContent = t;
+        opt.value = t; opt.textContent = t;
         selTem.appendChild(opt);
+      });
+    }
+    if (selTipo.options.length === 1) {
+      const tipos = [...new Set(
+        todosProyectos.map(p => p.tipo_proyecto).filter(Boolean)
+      )].sort();
+      tipos.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        selTipo.appendChild(opt);
       });
     }
 
@@ -583,10 +608,19 @@
       card.dataset.id = p.id;
       card.innerHTML = `
         <span class="proy-nombre">${p.nombre}</span>
-        ${p.tematica ? `<span class="proy-tematica">${p.tematica}</span>` : ''}
+        ${p.tematicas.length ? p.tematicas.map(t => `<span class="proy-tematica">${t}</span>`).join('') : ''}
       `;
       card.addEventListener('click', () => {
-        mapa.flyTo({ center: [p.longitud, p.latitud], zoom: 14, duration: 800 });
+        const ubs = p.ubicaciones;
+        if (ubs.length === 1) {
+          mapa.flyTo({ center: [ubs[0].lng, ubs[0].lat], zoom: 14, duration: 800 });
+        } else {
+          const bounds = ubs.reduce(
+            (b, u) => b.extend([u.lng, u.lat]),
+            new maplibregl.LngLatBounds([ubs[0].lng, ubs[0].lat], [ubs[0].lng, ubs[0].lat])
+          );
+          mapa.fitBounds(bounds, { padding: 80, duration: 800 });
+        }
 
         const insts = Array.isArray(p.proyectos_instituciones) ? p.proyectos_instituciones : [];
         const tagsHTML = insts.length
@@ -598,7 +632,7 @@
           : '<span class="popup-meta">Sin instituciones vinculadas</span>';
 
         new maplibregl.Popup({ closeButton: true, maxWidth: '300px' })
-          .setLngLat([p.longitud, p.latitud])
+          .setLngLat([ubs[0].lng, ubs[0].lat])
           .setHTML(`
             <p class="popup-tipo">Proyecto</p>
             <p class="popup-nombre">${p.nombre}</p>
@@ -615,13 +649,15 @@
 
   // ── Sidebar: filtrado combinado ──
   function filtrarSidebar() {
-    const texto   = document.getElementById('search-proyecto').value.toLowerCase().trim();
+    const texto    = document.getElementById('search-proyecto').value.toLowerCase().trim();
     const tematica = document.getElementById('filter-tematica').value;
+    const tipo     = document.getElementById('filter-tipo').value;
 
     const filtrados = todosProyectos.filter(p => {
       const coincideNombre = p.nombre.toLowerCase().includes(texto);
-      const coincideTem    = !tematica || p.tematica === tematica;
-      return coincideNombre && coincideTem;
+      const coincideTem    = !tematica || p.tematicas.includes(tematica);
+      const coincideTipo   = !tipo     || p.tipo_proyecto === tipo;
+      return coincideNombre && coincideTem && coincideTipo;
     });
 
     poblarSidebar(filtrados);
@@ -806,6 +842,7 @@
       toggleCapa('instituciones', 'toggle-instituciones');
       document.getElementById('search-proyecto').addEventListener('input',  filtrarSidebar);
       document.getElementById('filter-tematica').addEventListener('change', filtrarSidebar);
+      document.getElementById('filter-tipo').addEventListener('change',     filtrarSidebar);
     });
   });
 </script>

@@ -9,13 +9,14 @@ Esta base de datos está diseñada para capturar y visualizar información sobre
 ## Diagrama de relaciones
 
 ```
-instituciones ──────────────── proyectos_instituciones ──────────────── proyectos
-                                  (tipo_participacion)
-                                                                              │
-                                                                    proyecto_actores
-                                                                    (posicion_proyecto)
-                                                                              │
-                                                                          actores
+instituciones ──── proyectos_instituciones ──── proyectos ──── proyecto_tematicas
+                      (tipo_participacion)          │
+                                                    ├────────── proyecto_ubicaciones
+                                                    │              (latitud, longitud)
+                                                    └────────── proyecto_actores
+                                                                   (posicion_proyecto)
+                                                                          │
+                                                                       actores
 ```
 
 ---
@@ -55,15 +56,14 @@ alter table instituciones
 
 ### `proyectos`
 
-Almacena los proyectos registrados. También tiene ubicación geográfica propia, independiente de la de sus instituciones.
+Almacena los proyectos registrados. Las ubicaciones geográficas se manejan en la tabla `proyecto_ubicaciones` para soportar múltiples localizaciones por proyecto.
 
 | Campo | Tipo | Requerido | Descripción |
 |---|---|---|---|
 | `id` | bigint | auto | Identificador único, generado automáticamente |
 | `nombre` | text | sí | Nombre del proyecto |
 | `objetivo` | text | no | Descripción del objetivo principal |
-| `latitud` | float8 | no | Coordenada geográfica — latitud |
-| `longitud` | float8 | no | Coordenada geográfica — longitud |
+| `tipo_proyecto` | text | no | Clasificación del proyecto — valor controlado por catálogo `TIPOS_PROYECTO` |
 | `created_at` | timestamptz | auto | Fecha y hora de creación del registro |
 
 ---
@@ -87,7 +87,7 @@ Almacena las personas de contacto vinculadas a los proyectos. No tiene ubicació
 
 ## Tablas intermedias
 
-Estas tablas existen porque las relaciones entre entidades son de **muchos a muchos**: un proyecto puede tener varias instituciones, y una institución puede participar en varios proyectos. Lo mismo aplica para actores.
+Estas tablas existen porque las relaciones entre entidades son de **muchos a muchos**: un proyecto puede tener varias instituciones, varias temáticas, varias ubicaciones geográficas; una institución puede participar en varios proyectos; un actor puede estar vinculado a varios proyectos.
 
 ### `proyectos_instituciones`
 
@@ -98,6 +98,63 @@ Vincula proyectos con instituciones. La combinación `(proyecto_id, institucion_
 | `proyecto_id` | bigint FK | Referencia a `proyectos.id` |
 | `institucion_id` | bigint FK | Referencia a `instituciones.id` |
 | `tipo_participacion` | text | Rol de la institución — valor controlado por catálogo `cat_tipos_participacion` (en definición) |
+
+---
+
+### `proyecto_tematicas`
+
+Permite que un proyecto esté clasificado en **varias temáticas** simultáneamente. Los valores válidos están definidos en el catálogo `TEMATICAS_PROYECTOS` de `catalogos.js`.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `id` | serial | Identificador autoincremental |
+| `proyecto_id` | int FK | Referencia a `proyectos.id` (cascade delete) |
+| `tematica` | text | Temática del catálogo `TEMATICAS_PROYECTOS` |
+
+**SQL de creación:**
+
+```sql
+CREATE TABLE proyecto_tematicas (
+  id          serial PRIMARY KEY,
+  proyecto_id int    NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
+  tematica    text   NOT NULL
+);
+
+ALTER TABLE proyecto_tematicas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon read"   ON proyecto_tematicas FOR SELECT USING (true);
+CREATE POLICY "auth insert" ON proyecto_tematicas FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+```
+
+---
+
+### `proyecto_ubicaciones`
+
+Permite que un proyecto tenga **varias ubicaciones geográficas** (multi-pin en el mapa). En la capa pública se genera un feature GeoJSON por cada ubicación.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `id` | serial | Identificador autoincremental |
+| `proyecto_id` | int FK | Referencia a `proyectos.id` (cascade delete) |
+| `latitud` | float8 | Coordenada geográfica — latitud |
+| `longitud` | float8 | Coordenada geográfica — longitud |
+| `etiqueta` | text | Nombre opcional del lugar (ej. "Sede norte") |
+
+**SQL de creación:**
+
+```sql
+CREATE TABLE proyecto_ubicaciones (
+  id          serial PRIMARY KEY,
+  proyecto_id int    NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
+  latitud     float8 NOT NULL,
+  longitud    float8 NOT NULL,
+  etiqueta    text
+);
+
+ALTER TABLE proyecto_ubicaciones ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon read"   ON proyecto_ubicaciones FOR SELECT USING (true);
+CREATE POLICY "auth insert" ON proyecto_ubicaciones FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "auth delete" ON proyecto_ubicaciones FOR DELETE USING (auth.role() = 'authenticated');
+```
 
 ---
 
@@ -134,11 +191,42 @@ on public.proyecto_actores for insert to authenticated with check (true);
 
 ## Catálogos en JavaScript
 
-Algunos campos tienen valores controlados que se manejan directamente en el frontend, sin tabla en Supabase, porque son datos fijos que no cambian.
+Algunos campos tienen valores controlados que se manejan directamente en el frontend (`assets/js/catalogos.js`), sin tabla en Supabase, porque son datos fijos que no cambian con frecuencia.
 
-### Alcaldías de la CDMX (`assets/js/catalogos.js`)
+### Tipos de proyecto (`TIPOS_PROYECTO`)
 
-Las 16 alcaldías de la Ciudad de México se almacenan en el arreglo `ALCALDIAS_CDMX`. El formulario de captura carga estas opciones en los selects de alcaldía al iniciar la página (sin requerir sesión).
+Clasificación del tipo de proyecto según su naturaleza. Se muestra como `<select>` en el formulario y como filtro en el mapa.
+
+```js
+const TIPOS_PROYECTO = [
+  'Generación de conocimiento',
+  'Generación y aplicación de conocimiento',
+  'Aplicación, implementación o institucionalización',
+];
+```
+
+### Temáticas de proyectos (`TEMATICAS_PROYECTOS`)
+
+Un proyecto puede pertenecer a **varias temáticas** simultáneamente (relación M:M vía `proyecto_tematicas`). El formulario muestra estos valores como checkboxes; el mapa los muestra como filtro.
+
+```js
+const TEMATICAS_PROYECTOS = [
+  'Investigación científica básica y aplicada',
+  'Ambiente, territorio y sustentabilidad',
+  'Humanidades y ciencias sociales',
+  'Ciencias de la Salud',
+  'Innovación social',
+  'Ciencia comunitaria/Ciencia ciudadana',
+  'Investigación educativa',
+  'Investigación artística',
+  'Desarrollo tecnológico e ingeniería',
+  'Tecnologías de la información y software',
+];
+```
+
+### Alcaldías de la CDMX (`ALCALDIAS_CDMX`)
+
+Las 16 alcaldías de la Ciudad de México. El formulario carga estas opciones en los selects de alcaldía al iniciar la página (sin requerir sesión).
 
 ```js
 const ALCALDIAS_CDMX = [
