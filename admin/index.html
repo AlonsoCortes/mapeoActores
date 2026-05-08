@@ -6,7 +6,9 @@
   <title>Registro de proyectos</title>
   <link rel="stylesheet" href="../assets/css/styles.css"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="../assets/js/config.js"></script>
   <script src="../assets/js/catalogos.js"></script>
 <style>
   .nivel-cards {
@@ -572,28 +574,8 @@
 </div>
 
 <script>
-  // ── Helper para llamadas al servidor local ──────────────────────────────────
-  // En Supabase cada operación devuelve { data, error }.
-  // Aquí usamos fetch directo y propagamos errores con throw para manejarlos
-  // con try/catch en cada llamada.
-  const api = {
-    async get(path) {
-      const r = await fetch(path);
-      const data = await r.json();
-      if (data && data.error) throw new Error(data.error);
-      return data;
-    },
-    async post(path, body) {
-      const r = await fetch(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await r.json();
-      if (data && data.error) throw new Error(data.error);
-      return data;
-    },
-  };
+  const { createClient } = supabase;
+  const db = createClient(SUPABASE_URL, SUPABASE_ANON);
 
   // ── Toast ──
   function toast(msg, type = 'success', action = null) {
@@ -624,6 +606,12 @@
     });
   });
 
+  // ── Auth ──
+  async function checkSession() {
+    const { data: { session } } = await db.auth.getSession();
+    if (session) showApp(session.user.email);
+  }
+
   // ── Modal instructivo ──
   function mostrarInstructivo() {
     document.getElementById('modal-instructivo').classList.remove('hidden');
@@ -645,10 +633,23 @@
   document.getElementById('exito-close-btn').addEventListener('click', cerrarExitoProyecto);
   document.getElementById('exito-close-btn2').addEventListener('click', cerrarExitoProyecto);
 
-  // En modo local no hay autenticación — salir simplemente recarga la página
-  document.getElementById('btn-logout').addEventListener('click', () => location.reload());
+  async function login() {
+    const email = document.getElementById('login-email').value.trim();
+    const pass  = document.getElementById('login-password').value;
+    const btn   = document.getElementById('btn-login');
+    btn.disabled = true;
+    btn.textContent = 'entrando...';
+    const { data, error } = await db.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+      toast('Credenciales incorrectas', 'error');
+      btn.disabled = false;
+      btn.textContent = 'entrar';
+    } else {
+      showApp(data.user.email, true);
+    }
+  }
 
-  function showApp(email) {
+  function showApp(email, mostrarModal = false) {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-screen').style.display = 'flex';
     document.getElementById('user-info').style.display = 'flex';
@@ -658,7 +659,43 @@
     loadTiposParticipacion();
     loadInstituciones();
     loadProyectos();
+    if (mostrarModal) mostrarInstructivo();
   }
+
+  document.getElementById('btn-login').addEventListener('click', login);
+  document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+  document.getElementById('btn-logout').addEventListener('click', async () => {
+    await db.auth.signOut();
+    location.reload();
+  });
+
+  // ── Invitación: establecer contraseña ──
+  function mostrarSetPassword() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('set-password-screen').style.display = 'flex';
+  }
+
+  async function guardarPassword() {
+    const pass    = document.getElementById('new-password').value;
+    const confirm = document.getElementById('confirm-password').value;
+    if (pass.length < 6)    return toast('La contraseña debe tener al menos 6 caracteres', 'error');
+    if (pass !== confirm)   return toast('Las contraseñas no coinciden', 'error');
+    const btn = document.getElementById('btn-set-password');
+    btn.disabled = true; btn.textContent = 'guardando...';
+    const { error } = await db.auth.updateUser({ password: pass });
+    if (error) {
+      toast('Error: ' + error.message, 'error');
+      btn.disabled = false; btn.textContent = 'establecer contraseña';
+    } else {
+      history.replaceState(null, '', window.location.pathname);
+      document.getElementById('set-password-screen').style.display = 'none';
+      const { data: { session } } = await db.auth.getSession();
+      showApp(session.user.email);
+    }
+  }
+
+  document.getElementById('btn-set-password').addEventListener('click', guardarPassword);
+  document.getElementById('confirm-password').addEventListener('keydown', e => { if (e.key === 'Enter') guardarPassword(); });
 
   // ── Mapa proyecto ──
   const mapProy = L.map('map-picker').setView([19.432608, -99.133209], 11);
@@ -692,8 +729,9 @@
     renderUbicacionesList();
   };
 
-  // ── Mapa institución ──
+  // ── Mapa institución ── 
   const mapInst = L.map('map-inst').setView([19.432608, -99.133209], 11);
+  
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
   }).addTo(mapInst);
@@ -711,17 +749,17 @@
 
   // ── Cargar catálogo de tipos de participación ──
   async function loadTiposParticipacion() {
-    const data = await api.get('/api/catalogos/tipos-participacion');
-    const opciones = data.map(t => `<option value="${t.nombre}">${t.nombre}</option>`).join('');
+    const { data } = await db.from('cat_tipos_participacion').select('nombre').order('nombre');
+    const opciones = (data || []).map(t => `<option value="${t.nombre}">${t.nombre}</option>`).join('');
     document.getElementById('inst-tipo').innerHTML = '<option value="">— selecciona —</option>' + opciones;
   }
 
   // ── Cargar proyectos para selector de actor ──
   async function loadProyectos() {
-    const data = await api.get('/api/proyectos');
+    const { data } = await db.from('proyectos').select('id, nombre').order('nombre');
     const sel = document.getElementById('proy-select-actor');
     sel.innerHTML = '<option value="">— selecciona —</option>';
-    data.forEach(p => {
+    (data || []).forEach(p => {
       const opt = document.createElement('option');
       opt.value = p.id; opt.textContent = p.nombre;
       sel.appendChild(opt);
@@ -747,10 +785,10 @@
       TIPOS_PROYECTO.map(t => `<option value="${t}">${t}</option>`).join('');
   }
 
-  // ── Cargar catálogo de tipos de institución ──
+  // ── Cargar catálogo de tipos ──
   async function loadTipos() {
-    const data = await api.get('/api/catalogos/tipos-institucion');
-    const opciones = data.map(t => `<option value="${t.nombre}">${t.nombre}</option>`).join('');
+    const { data } = await db.from('cat_tipos_institucion').select('nombre').order('nombre');
+    const opciones = (data || []).map(t => `<option value="${t.nombre}">${t.nombre}</option>`).join('');
     ['inst-tipo-cat', 'org-nueva-tipo', 'dept-nueva-tipo'].forEach(id => {
       document.getElementById(id).innerHTML = '<option value="">— selecciona —</option>' + opciones;
     });
@@ -758,7 +796,8 @@
 
   // ── Cargar instituciones para el selector (con jerarquía) ──
   async function loadInstituciones() {
-    const todas = await api.get('/api/instituciones');
+    const { data } = await db.from('instituciones').select('id, nombre, nivel, parent_id').order('nombre');
+    const todas = data || [];
     const n1 = todas.filter(i => i.nivel === 1);
     const n2 = todas.filter(i => i.nivel === 2);
     const n3 = todas.filter(i => i.nivel === 3);
@@ -782,6 +821,7 @@
         });
       });
     });
+    // Huérfanos sin padre registrado
     n2.filter(d => !n1.find(o => o.id === d.parent_id)).forEach(d => agregarOpt(sel, d.id, '↳ ' + d.nombre));
     n3.filter(g => !n2.find(d => d.id === g.parent_id)).forEach(g => agregarOpt(sel, g.id, '↳ ' + g.nombre));
   }
@@ -828,10 +868,10 @@
   });
 
   async function cargarOrgsParaPadre() {
-    const data = await api.get('/api/instituciones?nivel=1');
+    const { data } = await db.from('instituciones').select('id, nombre').eq('nivel', 1).order('nombre');
     const sel = document.getElementById('sel-org-padre');
     sel.innerHTML = '<option value="">— selecciona —</option>';
-    data.forEach(i => {
+    (data || []).forEach(i => {
       const opt = document.createElement('option');
       opt.value = i.id; opt.textContent = i.nombre;
       sel.appendChild(opt);
@@ -841,10 +881,10 @@
 
   document.getElementById('sel-org-padre').addEventListener('change', async function () {
     if (nivelActivo !== 3 || !this.value) return;
-    const data = await api.get(`/api/instituciones?nivel=2&parent_id=${this.value}`);
+    const { data } = await db.from('instituciones').select('id, nombre').eq('nivel', 2).eq('parent_id', parseInt(this.value)).order('nombre');
     const sel = document.getElementById('sel-dept-padre');
     sel.innerHTML = '<option value="">— selecciona —</option>';
-    data.forEach(i => {
+    (data || []).forEach(i => {
       const opt = document.createElement('option');
       opt.value = i.id; opt.textContent = i.nombre;
       sel.appendChild(opt);
@@ -897,34 +937,34 @@
     btn.disabled = true;
     btn.textContent = 'guardando...';
 
-    let proy;
-    try {
-      proy = await api.post('/api/proyectos', { nombre, objetivo, tipo_proyecto });
-    } catch (e) {
-      toast('Error al guardar: ' + e.message, 'error');
+    const { data: proy, error } = await db.from('proyectos').insert({
+      nombre, objetivo, tipo_proyecto,
+    }).select().single();
+
+    if (error) {
+      toast('Error al guardar: ' + error.message, 'error');
       btn.disabled = false;
       btn.textContent = 'guardar proyecto';
       return;
     }
 
     if (instVinculadas.length > 0) {
-      await api.post('/api/proyectos-instituciones',
-        instVinculadas.map(i => ({
-          proyecto_id: proy.id,
-          institucion_id: parseInt(i.id),
-          tipo_participacion: i.tipo || null,
-        }))
-      );
+      const rows = instVinculadas.map(i => ({
+        proyecto_id: proy.id,
+        institucion_id: i.id,
+        tipo_participacion: i.tipo || null,
+      }));
+      await db.from('proyectos_instituciones').insert(rows);
     }
 
     if (tematicasSeleccionadas.length > 0) {
-      await api.post('/api/proyecto-tematicas',
+      await db.from('proyecto_tematicas').insert(
         tematicasSeleccionadas.map(t => ({ proyecto_id: proy.id, tematica: t }))
       );
     }
 
     if (ubicacionesProy.length > 0) {
-      await api.post('/api/proyecto-ubicaciones',
+      await db.from('proyecto_ubicaciones').insert(
         ubicacionesProy.map(u => ({ proyecto_id: proy.id, latitud: u.lat, longitud: u.lng }))
       );
     }
@@ -974,19 +1014,15 @@
       } else {
         const orgNombre = document.getElementById('org-nueva-nombre').value.trim();
         if (!orgNombre) { toast('Ingresa el nombre de la organización', 'error'); return restore(); }
-        try {
-          const newOrg = await api.post('/api/instituciones', {
-            nombre: orgNombre,
-            tipo:     document.getElementById('org-nueva-tipo').value.trim()     || null,
-            alcaldia: document.getElementById('org-nueva-alcaldia').value.trim() || null,
-            colonia:  document.getElementById('org-nueva-colonia').value.trim()  || null,
-            nivel: 1, parent_id: null,
-          });
-          orgId = newOrg.id;
-        } catch (e) {
-          toast('Error al guardar organización: ' + e.message, 'error');
-          return restore();
-        }
+        const { data: newOrg, error: e } = await db.from('instituciones').insert({
+          nombre: orgNombre,
+          tipo:     document.getElementById('org-nueva-tipo').value.trim()     || null,
+          alcaldia: document.getElementById('org-nueva-alcaldia').value.trim() || null,
+          colonia:  document.getElementById('org-nueva-colonia').value.trim()  || null,
+          nivel: 1, parent_id: null,
+        }).select().single();
+        if (e) { toast('Error al guardar organización: ' + e.message, 'error'); return restore(); }
+        orgId = newOrg.id;
       }
       parentId = orgId;
 
@@ -999,40 +1035,37 @@
         } else {
           const deptNombre = document.getElementById('dept-nueva-nombre').value.trim();
           if (!deptNombre) { toast('Ingresa el nombre del departamento', 'error'); return restore(); }
-          try {
-            const newDept = await api.post('/api/instituciones', {
-              nombre: deptNombre,
-              tipo:     document.getElementById('dept-nueva-tipo').value.trim()     || null,
-              alcaldia: document.getElementById('dept-nueva-alcaldia').value.trim() || null,
-              colonia:  document.getElementById('dept-nueva-colonia').value.trim()  || null,
-              nivel: 2, parent_id: orgId,
-            });
-            deptId = newDept.id;
-          } catch (e) {
-            toast('Error al guardar departamento: ' + e.message, 'error');
-            return restore();
-          }
+          const { data: newDept, error: e } = await db.from('instituciones').insert({
+            nombre: deptNombre,
+            tipo:     document.getElementById('dept-nueva-tipo').value.trim()     || null,
+            alcaldia: document.getElementById('dept-nueva-alcaldia').value.trim() || null,
+            colonia:  document.getElementById('dept-nueva-colonia').value.trim()  || null,
+            nivel: 2, parent_id: orgId,
+          }).select().single();
+          if (e) { toast('Error al guardar departamento: ' + e.message, 'error'); return restore(); }
+          deptId = newDept.id;
         }
         parentId = deptId;
       }
     }
 
-    try {
-      await api.post('/api/instituciones', {
-        nombre, tipo, alcaldia, colonia,
-        nivel: nivelActivo,
-        parent_id: parentId,
-        latitud:  latitud  ? parseFloat(latitud)  : null,
-        longitud: longitud ? parseFloat(longitud) : null,
-      });
+    const { error } = await db.from('instituciones').insert({
+      nombre, tipo, alcaldia, colonia,
+      nivel: nivelActivo,
+      parent_id: parentId,
+      latitud:  latitud  ? parseFloat(latitud)  : null,
+      longitud: longitud ? parseFloat(longitud) : null,
+    });
+
+    if (error) {
+      toast('Error al guardar: ' + error.message, 'error');
+    } else {
       toast('Institución guardada', 'success', {
         label: '→ ir a Proyectos',
         onClick: () => document.querySelector('.tab[data-tab="proyecto"]').click(),
       });
       document.getElementById('btn-reset-inst').click();
       loadInstituciones();
-    } catch (e) {
-      toast('Error al guardar: ' + e.message, 'error');
     }
     restore();
   });
@@ -1045,6 +1078,7 @@
     document.querySelector('.nivel-card[data-nivel="1"]').classList.add('active');
     document.getElementById('bloque-org-padre').style.display  = 'none';
     document.getElementById('bloque-dept-padre').style.display = 'none';
+    // Reset toggles a "existente"
     ['org','dept'].forEach(b => {
       document.querySelectorAll(`#bloque-${b}-padre .tog`).forEach(t => t.classList.remove('active'));
       document.querySelector(`#bloque-${b}-padre .tog[data-modo="existente"]`).classList.add('active');
@@ -1110,27 +1144,33 @@
     btn.disabled = true;
     btn.textContent = 'guardando...';
 
-    let actor;
-    try {
-      actor = await api.post('/api/actores', { nombres, apellido_p, apellido_m, email, phone, posicion });
-    } catch (e) {
-      toast('Error al guardar: ' + e.message, 'error');
+    const { data: actor, error } = await db.from('actores')
+      .insert({ nombres, apellido_p, apellido_m, email, phone, posicion })
+      .select().single();
+
+    if (error) {
+      toast('Error al guardar: ' + error.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'guardar actor';
+      return;
+    }
+
+    if (!actor) {
+      toast('Error: no se pudo obtener el actor guardado. Verifica las políticas RLS de la tabla actores.', 'error');
       btn.disabled = false;
       btn.textContent = 'guardar actor';
       return;
     }
 
     if (proyVinculados.length > 0) {
-      try {
-        await api.post('/api/proyecto-actores',
-          proyVinculados.map(p => ({
-            proyecto_id: parseInt(p.id),
-            actor_id: actor.id,
-            posicion_proyecto: 'responsable_tecnico',
-          }))
-        );
-      } catch (e) {
-        toast('Actor guardado, pero error al vincular proyectos: ' + e.message, 'error');
+      const rows = proyVinculados.map(p => ({
+        proyecto_id: parseInt(p.id),
+        actor_id: actor.id,
+        posicion_proyecto: 'responsable_tecnico',
+      }));
+      const { error: eRel } = await db.from('proyecto_actores').insert(rows);
+      if (eRel) {
+        toast('Actor guardado, pero error al vincular proyectos: ' + eRel.message, 'error');
         btn.disabled = false;
         btn.textContent = 'guardar actor';
         return;
@@ -1151,11 +1191,16 @@
     renderProyChips();
   });
 
-  // ── Init: en modo local no hay autenticación ─────────────────────────────
-  // La pantalla de login se salta y el formulario se muestra directamente.
-  // El nombre de usuario es solo informativo.
+  // ── Init ──
   loadAlcaldias();
-  showApp('desarrollo local');
+  const _hashParams = new URLSearchParams(window.location.hash.slice(1));
+  if (_hashParams.get('type') === 'invite') {
+    db.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) mostrarSetPassword();
+    });
+  } else {
+    checkSession();
+  }
 </script>
 </body>
 </html>
